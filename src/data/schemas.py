@@ -1,13 +1,17 @@
 """
-Delta Table Schema Definitions for Microsoft Fabric Lakehouse.
+Delta Table Schema Definitions for LTL Freight Churn Prediction.
 
 This module defines the schemas for all Delta tables used in the
-churn prediction project. These schemas are used for:
-- Creating tables in Fabric Lakehouse
-- Validating data before writing
-- Documentation reference
+churn prediction project. Designed for Microsoft Fabric Lakehouse
+with LTL freight operational data.
 
-Use create_tables_sql() to generate Create Table statements for Fabric.
+Source Systems:
+- FRP001: Shipment data (PRO, pickup/delivery dates, revenue)
+- TOP006: Customer master and revenue data
+- Claims Data: Claims against shipments
+- Operational Tables: Transformed into operations_events
+
+Use create_all_tables_sql() to generate CREATE TABLE statements for Fabric.
 """
 
 from typing import Dict, List, Any
@@ -29,104 +33,248 @@ class TableSchema:
     name: str
     columns: List[ColumnDef]
     primary_key: List[str]
+    business_key: List[str] = None
     description: str = ""
+    source_system: str = ""
 
 
 # =============================================================================
-# Table Schemas per data-model.md
+# Table Schemas - LTL Freight Data Model
 # =============================================================================
 
 CUSTOMERS_SCHEMA = TableSchema(
     name="customers",
-    description="Customer master data with demographic and account information",
-    primary_key=["customer_id"],
+    description="Customer master data from TOP006",
+    source_system="TOP006",
+    primary_key=["customer_code"],
     columns=[
-        ColumnDef("customer_id", "STRING", False, "Unique customer identifier"),
-        ColumnDef("customer_name", "STRING", True, "Customer display name"),
-        ColumnDef("email", "STRING", True, "Contact email address"),
-        ColumnDef("segment", "STRING", True, "Customer segment (e.g., Enterprise, SMB, Consumer)"),
-        ColumnDef("region", "STRING", True, "Geographic region"),
+        ColumnDef("customer_code", "STRING", False, "Primary key - customer identifier from TOP006"),
+        ColumnDef("customer_name", "STRING", True, "Customer business name"),
+        ColumnDef("segment", "STRING", True, "Customer segment (National, Regional, SMB)"),
         ColumnDef("industry", "STRING", True, "Industry classification"),
-        ColumnDef("start_date", "DATE", True, "Date customer relationship began"),
-        ColumnDef("contract_type", "STRING", True, "Contract type (Monthly, Annual, Multi-year)"),
-        ColumnDef("contract_value", "DECIMAL(18,2)", True, "Annual contract value"),
-        ColumnDef("is_active", "BOOLEAN", True, "Whether customer is currently active"),
+        ColumnDef("start_date", "DATE", True, "Customer relationship start date"),
+        ColumnDef("sales_rep", "STRING", True, "Assigned sales representative"),
+        ColumnDef("region", "STRING", True, "Geographic region"),
+        ColumnDef("is_active", "BOOLEAN", True, "Current active status"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
-        ColumnDef("updated_at", "TIMESTAMP", False, "Record last update timestamp"),
+        ColumnDef("updated_at", "TIMESTAMP", True, "Last update timestamp"),
     ]
 )
 
-CUSTOMER_ACTIVITY_SCHEMA = TableSchema(
-    name="customer_activity",
-    description="Customer interaction and activity events",
-    primary_key=["activity_id"],
+AGREEMENTS_SCHEMA = TableSchema(
+    name="agreements",
+    description="Pricing agreements linking customers to shipments",
+    source_system="FRP001/Contract System",
+    primary_key=["agreement_id"],
+    business_key=["agreement_number"],
     columns=[
-        ColumnDef("activity_id", "STRING", False, "Unique activity identifier"),
-        ColumnDef("customer_id", "STRING", False, "Reference to customers table"),
-        ColumnDef("activity_date", "TIMESTAMP", False, "When the activity occurred"),
-        ColumnDef("activity_type", "STRING", False, "Type of activity (login, purchase, support, etc.)"),
-        ColumnDef("activity_channel", "STRING", True, "Channel (web, mobile, api, phone)"),
-        ColumnDef("activity_value", "DECIMAL(18,2)", True, "Monetary value if applicable"),
-        ColumnDef("activity_details", "STRING", True, "Additional activity metadata (JSON)"),
+        ColumnDef("agreement_id", "STRING", False, "Unique agreement identifier (UUID)"),
+        ColumnDef("agreement_number", "STRING", False, "Business agreement number"),
+        ColumnDef("customer_code", "STRING", False, "FK to customers.customer_code"),
+        ColumnDef("agreement_type", "STRING", True, "Type (Spot, Contract, Volume)"),
+        ColumnDef("effective_date", "DATE", True, "Agreement start date"),
+        ColumnDef("expiration_date", "DATE", True, "Agreement end date"),
+        ColumnDef("status", "STRING", True, "Active, Expired, Cancelled"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
     ]
 )
 
-CHURN_EVENTS_SCHEMA = TableSchema(
-    name="churn_events",
-    description="Explicit churn and cancellation events",
-    primary_key=["churn_event_id"],
+SHIPPERS_SCHEMA = TableSchema(
+    name="shippers",
+    description="Shipper (origin) reference dimension",
+    source_system="Master Data",
+    primary_key=["shipper_code"],
     columns=[
-        ColumnDef("churn_event_id", "STRING", False, "Unique churn event identifier"),
-        ColumnDef("customer_id", "STRING", False, "Reference to customers table"),
-        ColumnDef("churn_date", "DATE", False, "Date of churn/cancellation"),
-        ColumnDef("churn_type", "STRING", False, "Type: explicit (cancellation) or inferred (inactivity)"),
-        ColumnDef("churn_reason", "STRING", True, "Reason for churn if provided"),
-        ColumnDef("churn_reason_category", "STRING", True, "Categorized reason (price, competitor, etc.)"),
-        ColumnDef("feedback_score", "INT", True, "Exit survey score if available"),
+        ColumnDef("shipper_code", "STRING", False, "Primary key - shipper identifier"),
+        ColumnDef("shipper_name", "STRING", True, "Shipper business name"),
+        ColumnDef("shipper_city", "STRING", True, "City"),
+        ColumnDef("shipper_state", "STRING", True, "State code"),
+        ColumnDef("shipper_zip", "STRING", True, "ZIP code"),
+        ColumnDef("customer_code", "STRING", True, "FK to customers if shipper is the customer"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
+CONSIGNEES_SCHEMA = TableSchema(
+    name="consignees",
+    description="Consignee (destination) reference dimension",
+    source_system="Master Data",
+    primary_key=["consignee_code"],
+    columns=[
+        ColumnDef("consignee_code", "STRING", False, "Primary key - consignee identifier"),
+        ColumnDef("consignee_name", "STRING", True, "Consignee business name"),
+        ColumnDef("consignee_city", "STRING", True, "City"),
+        ColumnDef("consignee_state", "STRING", True, "State code"),
+        ColumnDef("consignee_zip", "STRING", True, "ZIP code"),
+        ColumnDef("customer_code", "STRING", True, "FK to customers if consignee is the customer"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
+SHIPMENTS_SCHEMA = TableSchema(
+    name="shipments",
+    description="Shipment facts from FRP001 - one row per PRO",
+    source_system="FRP001",
+    primary_key=["shipment_id"],
+    business_key=["alpha_pro"],
+    columns=[
+        ColumnDef("shipment_id", "STRING", False, "Unique ID (UUID)"),
+        ColumnDef("alpha_pro", "STRING", False, "Alpha PRO number (primary business key)"),
+        ColumnDef("agreement_number", "STRING", True, "FK to agreements.agreement_number"),
+        ColumnDef("customer_code", "STRING", True, "FK to customers (denormalized)"),
+        ColumnDef("shipper_code", "STRING", True, "FK to shippers.shipper_code"),
+        ColumnDef("consignee_code", "STRING", True, "FK to consignees.consignee_code"),
+        ColumnDef("pickup_date", "DATE", True, "Actual pickup date"),
+        ColumnDef("delivery_date", "DATE", True, "Actual delivery date"),
+        ColumnDef("scheduled_delivery_date", "DATE", True, "Originally scheduled delivery date"),
+        ColumnDef("origin_service_center", "STRING", True, "Pickup service center code"),
+        ColumnDef("dest_service_center", "STRING", True, "Delivery service center code"),
+        ColumnDef("weight", "DECIMAL(10,2)", True, "Shipment weight in lbs"),
+        ColumnDef("pieces", "INT", True, "Number of pieces"),
+        ColumnDef("revenue", "DECIMAL(12,2)", True, "Shipment revenue"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
+OPERATIONS_EVENTS_SCHEMA = TableSchema(
+    name="operations_events",
+    description="Service failures - boolean flags + days late per PRO",
+    source_system="Transformed from operational tables",
+    primary_key=["event_id"],
+    business_key=["alpha_pro"],
+    columns=[
+        ColumnDef("event_id", "STRING", False, "Unique ID (UUID)"),
+        ColumnDef("alpha_pro", "STRING", False, "FK to shipments.alpha_pro"),
+        ColumnDef("is_missed_pickup", "BOOLEAN", True, "Pickup was missed (True/False)"),
+        ColumnDef("is_late_delivery", "BOOLEAN", True, "Delivery was late (True/False)"),
+        ColumnDef("days_late", "INT", True, "Number of days late (0 if on-time)"),
+        ColumnDef("is_cancelled_pickup", "BOOLEAN", True, "Pickup was cancelled (True/False)"),
+        ColumnDef("responsible_service_center", "STRING", True, "Service center responsible for issue"),
+        ColumnDef("event_date", "DATE", True, "Date of the primary event"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
+CLAIMS_SCHEMA = TableSchema(
+    name="claims",
+    description="Claims filed against shipments",
+    source_system="Claims Data",
+    primary_key=["claim_id"],
+    columns=[
+        ColumnDef("claim_id", "STRING", False, "Primary key - claim identifier"),
+        ColumnDef("pro", "STRING", False, "PRO number (FK to shipments.alpha_pro)"),
+        ColumnDef("customer_code", "STRING", True, "FK to customers (denormalized)"),
+        ColumnDef("claim_acknowledged_date", "DATE", True, "Date claim was acknowledged"),
+        ColumnDef("amount_filed", "DECIMAL(12,2)", True, "Dollar amount filed"),
+        ColumnDef("amount_approved", "DECIMAL(12,2)", True, "Dollar amount approved"),
+        ColumnDef("amount_paid", "DECIMAL(12,2)", True, "Dollar amount paid"),
+        ColumnDef("claim_type", "STRING", True, "Type of claim (Damage, Loss, Shortage, etc.)"),
+        ColumnDef("claim_status", "STRING", True, "Current status (Open, Paid, Denied)"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
+CUSTOMER_REVENUE_SCHEMA = TableSchema(
+    name="customer_revenue",
+    description="Revenue aggregation per customer per period",
+    source_system="TOP006",
+    primary_key=["revenue_id"],
+    columns=[
+        ColumnDef("revenue_id", "STRING", False, "Unique ID (UUID)"),
+        ColumnDef("customer_code", "STRING", False, "FK to customers.customer_code"),
+        ColumnDef("period_date", "DATE", False, "First day of period"),
+        ColumnDef("period_type", "STRING", True, "MONTHLY or WEEKLY"),
+        ColumnDef("shipment_count", "INT", True, "Number of shipments in period"),
+        ColumnDef("total_revenue", "DECIMAL(14,2)", True, "Total revenue in period"),
+        ColumnDef("total_weight", "DECIMAL(14,2)", True, "Total weight shipped"),
+        ColumnDef("avg_revenue_per_shipment", "DECIMAL(10,2)", True, "Average revenue per shipment"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
     ]
 )
 
 FEATURES_SCHEMA = TableSchema(
     name="features",
-    description="Pre-computed feature vectors for model training and scoring",
+    description="Computed features for ML model input - one row per customer per scoring date",
+    source_system="Computed",
     primary_key=["feature_id"],
     columns=[
         ColumnDef("feature_id", "STRING", False, "Unique feature record identifier"),
-        ColumnDef("customer_id", "STRING", False, "Reference to customers table"),
+        ColumnDef("customer_code", "STRING", False, "FK to customers.customer_code"),
         ColumnDef("feature_set_id", "STRING", False, "Version identifier for feature set"),
         ColumnDef("computed_date", "DATE", False, "Date features were computed"),
-        ColumnDef("tenure_days", "INT", True, "Days since customer start date"),
-        ColumnDef("days_since_last_activity", "INT", True, "Days since most recent activity"),
-        ColumnDef("total_activities", "INT", True, "Total number of activity events"),
-        ColumnDef("activity_frequency", "DECIMAL(10,4)", True, "Activities per month"),
-        ColumnDef("purchase_count", "INT", True, "Number of purchase events"),
-        ColumnDef("purchase_total", "DECIMAL(18,2)", True, "Total purchase value"),
-        ColumnDef("support_ticket_count", "INT", True, "Number of support tickets"),
-        ColumnDef("login_count_30d", "INT", True, "Logins in last 30 days"),
-        ColumnDef("login_count_60d", "INT", True, "Logins in last 60 days"),
-        ColumnDef("login_count_90d", "INT", True, "Logins in last 90 days"),
-        ColumnDef("feature_json", "STRING", True, "Additional features as JSON"),
+        # Tenure Features
+        ColumnDef("tenure_days", "INT", True, "Days since first shipment"),
+        ColumnDef("tenure_months", "INT", True, "Months since first shipment"),
+        # Activity Features
+        ColumnDef("shipment_count_30d", "INT", True, "Shipments in last 30 days"),
+        ColumnDef("shipment_count_60d", "INT", True, "Shipments in last 60 days"),
+        ColumnDef("shipment_count_90d", "INT", True, "Shipments in last 90 days"),
+        ColumnDef("days_since_last_shipment", "INT", True, "Days since most recent shipment"),
+        # Revenue Features
+        ColumnDef("revenue_30d", "DECIMAL(12,2)", True, "Revenue last 30 days"),
+        ColumnDef("revenue_60d", "DECIMAL(12,2)", True, "Revenue last 60 days"),
+        ColumnDef("revenue_90d", "DECIMAL(12,2)", True, "Revenue last 90 days"),
+        ColumnDef("revenue_trend", "DECIMAL(8,4)", True, "Revenue change (recent vs prior period)"),
+        ColumnDef("avg_revenue_per_shipment", "DECIMAL(10,2)", True, "Average revenue per shipment"),
+        # Operations Features
+        ColumnDef("missed_pickup_count_90d", "INT", True, "Missed pickups in 90 days"),
+        ColumnDef("late_delivery_count_90d", "INT", True, "Late deliveries in 90 days"),
+        ColumnDef("cancelled_pickup_count_90d", "INT", True, "Cancelled pickups in 90 days"),
+        ColumnDef("avg_days_late_90d", "DECIMAL(6,2)", True, "Average days late in 90 days"),
+        ColumnDef("missed_pickup_rate", "DECIMAL(6,4)", True, "% of shipments with missed pickup"),
+        ColumnDef("late_delivery_rate", "DECIMAL(6,4)", True, "% of shipments delivered late"),
+        ColumnDef("on_time_delivery_rate", "DECIMAL(6,4)", True, "% of shipments on-time"),
+        # Claims Features
+        ColumnDef("claim_count_90d", "INT", True, "Claims in last 90 days"),
+        ColumnDef("claim_count_365d", "INT", True, "Claims in last year"),
+        ColumnDef("total_claims_filed_90d", "DECIMAL(12,2)", True, "$ claims filed in 90 days"),
+        ColumnDef("total_claims_paid_90d", "DECIMAL(12,2)", True, "$ claims paid in 90 days"),
+        ColumnDef("claim_rate", "DECIMAL(6,4)", True, "Claims per shipment"),
+        ColumnDef("avg_claim_amount", "DECIMAL(10,2)", True, "Average claim amount"),
+        # Service Center Features
+        ColumnDef("distinct_service_centers", "INT", True, "Number of service centers used"),
+        ColumnDef("primary_service_center", "STRING", True, "Most frequent service center"),
+        ColumnDef("service_center_issue_rate", "DECIMAL(6,4)", True, "% issues at primary center"),
+        # Shipper/Consignee Features
+        ColumnDef("distinct_shippers", "INT", True, "Number of unique shippers"),
+        ColumnDef("distinct_consignees", "INT", True, "Number of unique consignees"),
+        ColumnDef("top_lane_concentration", "DECIMAL(6,4)", True, "% volume in top shipper-consignee lane"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
     ]
 )
 
 PREDICTIONS_SCHEMA = TableSchema(
     name="predictions",
-    description="Model prediction outputs for all customers",
+    description="Model prediction outputs - one row per customer per bucket per date",
+    source_system="ML Model",
     primary_key=["prediction_id"],
     columns=[
         ColumnDef("prediction_id", "STRING", False, "Unique prediction identifier"),
-        ColumnDef("customer_id", "STRING", False, "Reference to customers table"),
+        ColumnDef("customer_code", "STRING", False, "FK to customers.customer_code"),
         ColumnDef("prediction_date", "DATE", False, "Date prediction was generated"),
         ColumnDef("model_version", "STRING", False, "Model version used for prediction"),
-        ColumnDef("churn_bucket", "STRING", False, "Churn bucket (30d, 60d, 90d, explicit)"),
-        ColumnDef("churn_probability", "DECIMAL(5,4)", False, "Probability of churn (0-1)"),
-        ColumnDef("risk_tier", "STRING", False, "Risk classification (Low, Medium, High, Critical)"),
-        ColumnDef("previous_probability", "DECIMAL(5,4)", True, "Previous week probability"),
-        ColumnDef("probability_change", "DECIMAL(5,4)", True, "Week-over-week change"),
-        ColumnDef("alert_triggered", "BOOLEAN", True, "Whether risk alert was triggered"),
+        ColumnDef("churn_bucket", "STRING", False, "churn_30d, churn_60d, churn_90d, revenue_decline"),
+        ColumnDef("churn_probability", "DECIMAL(6,4)", False, "Predicted probability (0.0-1.0)"),
+        ColumnDef("risk_tier", "STRING", False, "Low, Medium, High, Critical"),
+        ColumnDef("previous_probability", "DECIMAL(6,4)", True, "Previous week probability"),
+        ColumnDef("probability_change", "DECIMAL(6,4)", True, "Week-over-week change"),
+        ColumnDef("alert_triggered", "BOOLEAN", True, "True if crossed risk threshold"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
+CHURN_EVENTS_SCHEMA = TableSchema(
+    name="churn_events",
+    description="Actual churn outcomes for model training/validation",
+    source_system="Derived",
+    primary_key=["churn_event_id"],
+    columns=[
+        ColumnDef("churn_event_id", "STRING", False, "Unique churn event identifier"),
+        ColumnDef("customer_code", "STRING", False, "FK to customers.customer_code"),
+        ColumnDef("event_date", "DATE", False, "Date churn was identified"),
+        ColumnDef("churn_type", "STRING", False, "inactivity_30d, inactivity_60d, inactivity_90d, revenue_decline, contract_cancellation"),
+        ColumnDef("revenue_at_churn", "DECIMAL(12,2)", True, "Last period revenue before churn"),
+        ColumnDef("shipments_at_churn", "INT", True, "Last period shipment count"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
     ]
 )
@@ -134,6 +282,7 @@ PREDICTIONS_SCHEMA = TableSchema(
 MODEL_METRICS_SCHEMA = TableSchema(
     name="model_metrics",
     description="Model performance metrics for tracking and comparison",
+    source_system="MLflow",
     primary_key=["metrics_id"],
     columns=[
         ColumnDef("metrics_id", "STRING", False, "Unique metrics record identifier"),
@@ -159,6 +308,7 @@ MODEL_METRICS_SCHEMA = TableSchema(
 FEATURE_IMPORTANCE_SCHEMA = TableSchema(
     name="feature_importance",
     description="Feature importance scores with statistical significance",
+    source_system="ML Model",
     primary_key=["importance_id"],
     columns=[
         ColumnDef("importance_id", "STRING", False, "Unique importance record identifier"),
@@ -170,8 +320,8 @@ FEATURE_IMPORTANCE_SCHEMA = TableSchema(
         ColumnDef("std_error", "DECIMAL(10,6)", True, "Standard error of coefficient"),
         ColumnDef("z_score", "DECIMAL(10,4)", True, "Z-score for significance test"),
         ColumnDef("p_value", "DECIMAL(10,6)", True, "P-value for coefficient"),
-        ColumnDef("ci_lower", "DECIMAL(10,6)", True, "95% confidence interval lower bound"),
-        ColumnDef("ci_upper", "DECIMAL(10,6)", True, "95% confidence interval upper bound"),
+        ColumnDef("ci_lower", "DECIMAL(10,6)", True, "95% CI lower bound"),
+        ColumnDef("ci_upper", "DECIMAL(10,6)", True, "95% CI upper bound"),
         ColumnDef("importance_rank", "INT", False, "Rank by absolute coefficient"),
         ColumnDef("is_significant", "BOOLEAN", True, "Whether p_value < 0.05"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
@@ -181,11 +331,12 @@ FEATURE_IMPORTANCE_SCHEMA = TableSchema(
 POLICIES_SCHEMA = TableSchema(
     name="policies",
     description="Retention policies and interventions",
+    source_system="Business",
     primary_key=["policy_id"],
     columns=[
         ColumnDef("policy_id", "STRING", False, "Unique policy identifier"),
         ColumnDef("policy_name", "STRING", False, "Display name for policy"),
-        ColumnDef("policy_type", "STRING", False, "Type (discount, outreach, feature, etc.)"),
+        ColumnDef("policy_type", "STRING", False, "Type (discount, outreach, service_recovery)"),
         ColumnDef("description", "STRING", True, "Detailed policy description"),
         ColumnDef("start_date", "DATE", False, "Policy effective start date"),
         ColumnDef("end_date", "DATE", True, "Policy end date (null if ongoing)"),
@@ -193,20 +344,21 @@ POLICIES_SCHEMA = TableSchema(
         ColumnDef("target_risk_tier", "STRING", True, "Target risk tier (High, Critical)"),
         ColumnDef("is_active", "BOOLEAN", True, "Whether policy is currently active"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
-        ColumnDef("updated_at", "TIMESTAMP", False, "Record last update timestamp"),
+        ColumnDef("updated_at", "TIMESTAMP", True, "Record last update timestamp"),
     ]
 )
 
 POLICY_COHORTS_SCHEMA = TableSchema(
     name="policy_cohorts",
     description="Customer assignments to policy treatment and control groups",
+    source_system="Business",
     primary_key=["cohort_id"],
     columns=[
         ColumnDef("cohort_id", "STRING", False, "Unique cohort assignment identifier"),
-        ColumnDef("policy_id", "STRING", False, "Reference to policies table"),
-        ColumnDef("customer_id", "STRING", False, "Reference to customers table"),
+        ColumnDef("policy_id", "STRING", False, "FK to policies.policy_id"),
+        ColumnDef("customer_code", "STRING", False, "FK to customers.customer_code"),
         ColumnDef("cohort_type", "STRING", False, "treatment or control"),
-        ColumnDef("assignment_date", "DATE", False, "Date customer was assigned to cohort"),
+        ColumnDef("assignment_date", "DATE", False, "Date customer was assigned"),
         ColumnDef("risk_score_at_assignment", "DECIMAL(5,4)", True, "Churn probability when assigned"),
         ColumnDef("outcome_measured", "BOOLEAN", True, "Whether outcome has been measured"),
         ColumnDef("outcome_date", "DATE", True, "Date outcome was measured"),
@@ -222,10 +374,16 @@ POLICY_COHORTS_SCHEMA = TableSchema(
 
 ALL_SCHEMAS: Dict[str, TableSchema] = {
     "customers": CUSTOMERS_SCHEMA,
-    "customer_activity": CUSTOMER_ACTIVITY_SCHEMA,
-    "churn_events": CHURN_EVENTS_SCHEMA,
+    "agreements": AGREEMENTS_SCHEMA,
+    "shippers": SHIPPERS_SCHEMA,
+    "consignees": CONSIGNEES_SCHEMA,
+    "shipments": SHIPMENTS_SCHEMA,
+    "operations_events": OPERATIONS_EVENTS_SCHEMA,
+    "claims": CLAIMS_SCHEMA,
+    "customer_revenue": CUSTOMER_REVENUE_SCHEMA,
     "features": FEATURES_SCHEMA,
     "predictions": PREDICTIONS_SCHEMA,
+    "churn_events": CHURN_EVENTS_SCHEMA,
     "model_metrics": MODEL_METRICS_SCHEMA,
     "feature_importance": FEATURE_IMPORTANCE_SCHEMA,
     "policies": POLICIES_SCHEMA,
@@ -258,7 +416,9 @@ def create_table_sql(schema: TableSchema) -> str:
     
     columns_str = ",\n".join(columns_sql)
     
-    sql = f"""-- {schema.description}
+    source_comment = f"\n-- Source: {schema.source_system}" if schema.source_system else ""
+    
+    sql = f"""-- {schema.description}{source_comment}
 CREATE TABLE IF NOT EXISTS {schema.name} (
 {columns_str}
 )
@@ -289,3 +449,60 @@ def get_required_columns(table_name: str) -> List[str]:
     """Get list of required (non-nullable) column names."""
     schema = get_schema(table_name)
     return [col.name for col in schema.columns if not col.nullable]
+
+
+def get_source_tables() -> Dict[str, str]:
+    """Get mapping of tables to their source systems."""
+    return {name: schema.source_system for name, schema in ALL_SCHEMAS.items()}
+
+
+# =============================================================================
+# Source System Column Mapping Helpers
+# =============================================================================
+
+# FRP001 column mapping - update these to match your actual column names
+FRP001_COLUMN_MAP = {
+    "alpha_pro": "ALPHA_PRO_NUM",  # Adjust to actual column name
+    "agreement_number": "AGREEMENT_NUM",
+    "pickup_date": "PICKUP_DATE",
+    "delivery_date": "DELIVERY_DATE",
+    "scheduled_delivery_date": "SCHED_DELIVERY_DATE",
+    "shipper_code": "SHIPPER_CODE",
+    "consignee_code": "CONSIGNEE_CODE",
+    "origin_service_center": "ORIG_SVC_CTR",
+    "dest_service_center": "DEST_SVC_CTR",
+    "weight": "WEIGHT",
+    "pieces": "PIECES",
+    "revenue": "REVENUE",
+}
+
+# TOP006 column mapping
+TOP006_COLUMN_MAP = {
+    "customer_code": "CUSTOMER_CODE",  # Adjust to actual column name
+    "customer_name": "CUSTOMER_NAME",
+    "segment": "SEGMENT",
+    "industry": "INDUSTRY",
+    "sales_rep": "SALES_REP",
+    "region": "REGION",
+}
+
+# Claims Data column mapping
+CLAIMS_COLUMN_MAP = {
+    "claim_id": "Claim ID",
+    "pro": "PRO",
+    "claim_acknowledged_date": "Claim Acknowledged Date",
+    "amount_filed": "$Filed",
+    "amount_approved": "$Approved Amount",
+    "amount_paid": "$Paid Amount",
+    "claim_type": "Type Claim",
+}
+
+
+def get_source_column_map(source_system: str) -> Dict[str, str]:
+    """Get column mapping for a source system."""
+    maps = {
+        "FRP001": FRP001_COLUMN_MAP,
+        "TOP006": TOP006_COLUMN_MAP,
+        "Claims Data": CLAIMS_COLUMN_MAP,
+    }
+    return maps.get(source_system, {})

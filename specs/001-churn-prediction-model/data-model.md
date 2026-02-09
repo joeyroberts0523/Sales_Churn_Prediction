@@ -1,237 +1,419 @@
-# Data Model: Customer Churn Prediction
+# Data Model: Customer Churn Prediction (LTL Freight)
 
-**Feature**: 001-churn-prediction-model  
-**Date**: 2026-02-09
+**Version**: 2.0  
+**Last Updated**: 2026-02-09  
+**Platform**: Microsoft Fabric Lakehouse
 
-## Entity Relationship Overview
+## Overview
+
+This data model supports churn prediction for LTL (Less-than-Truckload) freight customers using operational, claims, and revenue data.
+
+## Entity Relationship Diagram
 
 ```
-┌─────────────┐       ┌──────────────────┐       ┌─────────────┐
-│  Customer   │──────<│ Customer_Activity │       │   Policy    │
-└─────────────┘       └──────────────────┘       └─────────────┘
-       │                                                │
-       │              ┌──────────────────┐              │
-       └─────────────>│   Churn_Event    │              │
-       │              └──────────────────┘              │
-       │                                                │
-       │              ┌──────────────────┐              │
-       └─────────────>│    Prediction    │              │
-       │              └──────────────────┘              │
-       │                                                │
-       │              ┌──────────────────┐              │
-       └─────────────>│  Policy_Cohort   │<─────────────┘
-                      └──────────────────┘
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    customers    │────<│   agreements    │────<│    shipments    │
+│  (customer_code)│     │(agreement_number)│     │   (alpha_pro)   │
+└─────────────────┘     └─────────────────┘     └────────┬────────┘
+                                                         │
+                        ┌────────────────────────────────┼────────────────────────────────┐
+                        │                                │                                │
+                        ▼                                ▼                                ▼
+               ┌─────────────────┐              ┌─────────────────┐              ┌─────────────────┐
+               │     claims      │              │ operations_events│              │    revenue      │
+               │   (claim_id)    │              │   (alpha_pro)    │              │  (from TOP006)  │
+               └─────────────────┘              └─────────────────┘              └─────────────────┘
+
+┌─────────────────┐                    ┌─────────────────┐
+│    shippers     │<───────────────────│    shipments    │
+│ (shipper_code)  │                    │                 │
+└─────────────────┘                    │                 │
+                                       │                 │
+┌─────────────────┐                    │                 │
+│   consignees    │<───────────────────┘                 │
+│(consignee_code) │                                      │
+└─────────────────┘                                      │
 ```
 
-## Tables
+## Source System Mapping
+
+| Lakehouse Table | Source System | Key Fields |
+|-----------------|---------------|------------|
+| shipments | FRP001 | alpha_pro, agreement_number |
+| customers | TOP006 | customer_code |
+| customer_revenue | TOP006 | customer_code, period |
+| claims | Claims Data | claim_id, pro |
+| operations_events | Transformed from multiple tables | alpha_pro |
+| shippers | Reference/Master Data | shipper_code |
+| consignees | Reference/Master Data | consignee_code |
+
+---
+
+## Table Definitions
 
 ### 1. customers
 
-Master customer dimension table.
+**Source**: TOP006  
+**Grain**: One row per customer  
+**Purpose**: Master customer dimension
 
-| Column | Type | Description | Constraints |
-|--------|------|-------------|-------------|
-| customer_id | STRING | Unique customer identifier | PK, NOT NULL |
-| customer_name | STRING | Customer display name | |
-| account_type | STRING | Customer segment (Enterprise, SMB, Consumer) | |
-| industry | STRING | Industry classification | |
-| region | STRING | Geographic region | |
-| tenure_months | INT | Months since first purchase | ≥0 |
-| contract_type | STRING | Monthly, Annual, Multi-year | |
-| contract_start_date | DATE | Current contract start | |
-| contract_end_date | DATE | Current contract end | |
-| total_revenue_ltv | DECIMAL(12,2) | Lifetime revenue | |
-| assigned_rep_id | STRING | Customer success rep ID | |
-| created_at | TIMESTAMP | Record creation | NOT NULL |
-| updated_at | TIMESTAMP | Last update | NOT NULL |
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| customer_code | STRING | Primary key - customer identifier | TOP006 |
+| customer_name | STRING | Customer business name | TOP006 |
+| segment | STRING | Customer segment (e.g., National, Regional, SMB) | TOP006 |
+| industry | STRING | Industry classification | TOP006 |
+| start_date | DATE | Customer relationship start date | TOP006 |
+| sales_rep | STRING | Assigned sales representative | TOP006 |
+| region | STRING | Geographic region | TOP006 |
+| is_active | BOOLEAN | Current active status | TOP006 |
+| created_at | TIMESTAMP | Record creation timestamp | System |
+| updated_at | TIMESTAMP | Last update timestamp | System |
 
-### 2. customer_activity
+**Primary Key**: customer_code
 
-Customer interaction and usage events for inactivity calculation.
+---
 
-| Column | Type | Description | Constraints |
-|--------|------|-------------|-------------|
-| activity_id | STRING | Unique activity identifier | PK, NOT NULL |
-| customer_id | STRING | Reference to customer | FK, NOT NULL |
-| activity_date | DATE | Date of activity | NOT NULL |
-| activity_type | STRING | Login, Purchase, Support, Usage | NOT NULL |
-| activity_value | DECIMAL(12,2) | Monetary value if applicable | |
-| channel | STRING | Web, Mobile, API, Phone | |
-| created_at | TIMESTAMP | Record creation | NOT NULL |
+### 2. agreements
 
-**Index**: customer_id, activity_date DESC
+**Source**: Agreement/Contract system  
+**Grain**: One row per agreement  
+**Purpose**: Link customers to pricing agreements and shipment activity
 
-### 3. churn_events
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| agreement_id | STRING | Unique agreement identifier (UUID) | System |
+| agreement_number | STRING | Business agreement number | FRP001/Contract |
+| customer_code | STRING | FK to customers | FRP001 |
+| agreement_type | STRING | Type (Spot, Contract, Volume) | Contract |
+| effective_date | DATE | Agreement start date | Contract |
+| expiration_date | DATE | Agreement end date | Contract |
+| status | STRING | Active, Expired, Cancelled | Contract |
+| created_at | TIMESTAMP | Record creation timestamp | System |
 
-Historical churn records for training labels.
+**Primary Key**: agreement_id  
+**Foreign Keys**: customer_code → customers.customer_code
 
-| Column | Type | Description | Constraints |
-|--------|------|-------------|-------------|
-| churn_event_id | STRING | Unique event identifier | PK, NOT NULL |
-| customer_id | STRING | Reference to customer | FK, NOT NULL |
-| churn_date | DATE | Date of churn determination | NOT NULL |
-| churn_bucket | STRING | 30_day, 60_day, 90_day, explicit | NOT NULL |
-| churn_reason | STRING | Reason if known (competitive, price, product, other) | |
-| last_activity_date | DATE | Date of last activity before churn | |
-| days_inactive | INT | Days between last activity and churn date | |
-| is_explicit | BOOLEAN | True if explicit cancellation | NOT NULL |
-| created_at | TIMESTAMP | Record creation | NOT NULL |
+---
 
-### 4. features
+### 3. shippers
 
-Engineered feature store for model training and scoring.
+**Source**: Master Data  
+**Grain**: One row per shipper location  
+**Purpose**: Shipper (origin) reference dimension
 
-| Column | Type | Description | Constraints |
-|--------|------|-------------|-------------|
-| feature_snapshot_id | STRING | Unique snapshot identifier | PK, NOT NULL |
-| customer_id | STRING | Reference to customer | FK, NOT NULL |
-| snapshot_date | DATE | Date features were calculated | NOT NULL |
-| tenure_months | INT | Customer tenure | |
-| days_since_last_activity | INT | Inactivity days | |
-| days_since_last_purchase | INT | Days since last purchase | |
-| total_purchases_90d | INT | Purchases in last 90 days | |
-| total_revenue_90d | DECIMAL(12,2) | Revenue in last 90 days | |
-| support_tickets_90d | INT | Support tickets in last 90 days | |
-| login_count_30d | INT | Logins in last 30 days | |
-| usage_trend | DECIMAL(5,2) | Usage change % (current vs prior period) | |
-| contract_days_remaining | INT | Days until contract end | |
-| price_change_flag | BOOLEAN | Recent price increase | |
-| nps_score | INT | Net Promoter Score if available | |
-| created_at | TIMESTAMP | Record creation | NOT NULL |
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| shipper_code | STRING | Primary key - shipper identifier | Master Data |
+| shipper_name | STRING | Shipper business name | Master Data |
+| shipper_city | STRING | City | Master Data |
+| shipper_state | STRING | State code | Master Data |
+| shipper_zip | STRING | ZIP code | Master Data |
+| customer_code | STRING | FK to customers (if shipper is the customer) | Master Data |
+| created_at | TIMESTAMP | Record creation timestamp | System |
 
-**Note**: Additional features to be determined during EDA phase.
+**Primary Key**: shipper_code
 
-### 5. predictions
+---
 
-Model predictions output table.
+### 4. consignees
 
-| Column | Type | Description | Constraints |
-|--------|------|-------------|-------------|
-| prediction_id | STRING | Unique prediction identifier | PK, NOT NULL |
-| customer_id | STRING | Reference to customer | FK, NOT NULL |
-| prediction_date | DATE | Date prediction was made | NOT NULL |
-| model_version | STRING | MLflow model version/run ID | NOT NULL |
-| prob_churn_30d | DECIMAL(5,4) | Probability of >30 day inactivity | 0-1 |
-| prob_churn_60d | DECIMAL(5,4) | Probability of >60 day inactivity | 0-1 |
-| prob_churn_90d | DECIMAL(5,4) | Probability of >90 day inactivity | 0-1 |
-| prob_explicit_cancel | DECIMAL(5,4) | Probability of explicit cancellation | 0-1 |
-| risk_tier | STRING | Low, Medium, High, Critical | NOT NULL |
-| risk_score_composite | DECIMAL(5,4) | Weighted composite score | 0-1 |
-| created_at | TIMESTAMP | Record creation | NOT NULL |
+**Source**: Master Data  
+**Grain**: One row per consignee location  
+**Purpose**: Consignee (destination) reference dimension
 
-**Risk Tier Thresholds** (based on composite score):
-- Low: <0.30
-- Medium: 0.30-0.50
-- High: 0.50-0.70
-- Critical: >0.70
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| consignee_code | STRING | Primary key - consignee identifier | Master Data |
+| consignee_name | STRING | Consignee business name | Master Data |
+| consignee_city | STRING | City | Master Data |
+| consignee_state | STRING | State code | Master Data |
+| consignee_zip | STRING | ZIP code | Master Data |
+| customer_code | STRING | FK to customers (if consignee is the customer) | Master Data |
+| created_at | TIMESTAMP | Record creation timestamp | System |
 
-### 6. model_metrics
+**Primary Key**: consignee_code
 
-Model performance tracking over time.
+---
 
-| Column | Type | Description | Constraints |
-|--------|------|-------------|-------------|
-| metric_id | STRING | Unique metric identifier | PK, NOT NULL |
-| model_version | STRING | MLflow model version/run ID | NOT NULL |
-| churn_bucket | STRING | Which bucket this metric applies to | NOT NULL |
-| evaluation_date | DATE | Date of evaluation | NOT NULL |
-| dataset_type | STRING | train, validation, test, production | NOT NULL |
-| auc_roc | DECIMAL(5,4) | Area under ROC curve | |
-| precision | DECIMAL(5,4) | Precision at threshold | |
-| recall | DECIMAL(5,4) | Recall at threshold | |
-| f1_score | DECIMAL(5,4) | F1 score | |
-| threshold | DECIMAL(5,4) | Classification threshold used | |
-| true_positives | INT | Confusion matrix TP | |
-| false_positives | INT | Confusion matrix FP | |
-| true_negatives | INT | Confusion matrix TN | |
-| false_negatives | INT | Confusion matrix FN | |
-| created_at | TIMESTAMP | Record creation | NOT NULL |
+### 5. shipments
 
-### 7. feature_importance
+**Source**: FRP001  
+**Grain**: One row per PRO (shipment)  
+**Purpose**: Shipment facts - core transactional data
 
-Feature importance results per model.
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| shipment_id | STRING | Unique ID (UUID) | System |
+| alpha_pro | STRING | Alpha PRO number (primary business key) | FRP001 |
+| agreement_number | STRING | FK to agreements | FRP001 |
+| customer_code | STRING | FK to customers (denormalized for query performance) | FRP001/TOP006 |
+| shipper_code | STRING | FK to shippers | FRP001 |
+| consignee_code | STRING | FK to consignees | FRP001 |
+| pickup_date | DATE | Scheduled/actual pickup date | FRP001 |
+| delivery_date | DATE | Scheduled/actual delivery date | FRP001 |
+| scheduled_delivery_date | DATE | Originally scheduled delivery | FRP001 |
+| origin_service_center | STRING | Pickup service center code | FRP001 |
+| dest_service_center | STRING | Delivery service center code | FRP001 |
+| weight | DECIMAL(10,2) | Shipment weight (lbs) | FRP001 |
+| pieces | INTEGER | Number of pieces | FRP001 |
+| revenue | DECIMAL(12,2) | Shipment revenue | FRP001/TOP006 |
+| created_at | TIMESTAMP | Record creation timestamp | System |
 
-| Column | Type | Description | Constraints |
-|--------|------|-------------|-------------|
-| importance_id | STRING | Unique identifier | PK, NOT NULL |
-| model_version | STRING | MLflow model version/run ID | FK, NOT NULL |
-| churn_bucket | STRING | Which bucket model | NOT NULL |
-| feature_name | STRING | Feature column name | NOT NULL |
-| coefficient | DECIMAL(10,6) | Logistic regression coefficient | |
-| odds_ratio | DECIMAL(10,4) | exp(coefficient) | |
-| std_error | DECIMAL(10,6) | Standard error of coefficient | |
-| z_score | DECIMAL(10,4) | Wald z-statistic | |
-| p_value | DECIMAL(10,6) | Statistical significance | |
-| ci_lower | DECIMAL(10,6) | 95% CI lower bound (coefficient) | |
-| ci_upper | DECIMAL(10,6) | 95% CI upper bound (coefficient) | |
-| importance_rank | INT | Rank by absolute coefficient | |
-| created_at | TIMESTAMP | Record creation | NOT NULL |
+**Primary Key**: shipment_id  
+**Business Key**: alpha_pro  
+**Foreign Keys**: 
+- agreement_number → agreements.agreement_number
+- customer_code → customers.customer_code
+- shipper_code → shippers.shipper_code
+- consignee_code → consignees.consignee_code
 
-### 8. policies
+---
 
-Retention policy definitions.
+### 6. operations_events
 
-| Column | Type | Description | Constraints |
-|--------|------|-------------|-------------|
-| policy_id | STRING | Unique policy identifier | PK, NOT NULL |
-| policy_name | STRING | Descriptive name | NOT NULL |
-| policy_type | STRING | Discount, Outreach, Service, Product | NOT NULL |
-| description | STRING | Policy details | |
-| start_date | DATE | Policy effective start | NOT NULL |
-| end_date | DATE | Policy end (NULL if ongoing) | |
-| target_segment | STRING | Target customer criteria | |
-| expected_impact | DECIMAL(5,4) | Expected churn reduction % | |
-| status | STRING | Active, Completed, Cancelled | NOT NULL |
-| created_at | TIMESTAMP | Record creation | NOT NULL |
-| updated_at | TIMESTAMP | Last update | NOT NULL |
+**Source**: Transformed from multiple operational tables  
+**Grain**: One row per PRO (aggregated operational events)  
+**Purpose**: Boolean flags for service failures + days late
 
-### 9. policy_cohorts
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| event_id | STRING | Unique ID (UUID) | System |
+| alpha_pro | STRING | FK to shipments | Operational Tables |
+| is_missed_pickup | BOOLEAN | Pickup was missed (True/False) | Transformed |
+| is_late_delivery | BOOLEAN | Delivery was late (True/False) | Transformed |
+| days_late | INTEGER | Number of days late (0 if on-time) | Transformed |
+| is_cancelled_pickup | BOOLEAN | Pickup was cancelled (True/False) | Transformed |
+| responsible_service_center | STRING | Service center responsible for issue | Transformed |
+| event_date | DATE | Date of the primary event | Transformed |
+| created_at | TIMESTAMP | Record creation timestamp | System |
 
-Customer assignments to policies for efficacy tracking.
+**Primary Key**: event_id  
+**Business Key**: alpha_pro  
+**Foreign Keys**: alpha_pro → shipments.alpha_pro
 
-| Column | Type | Description | Constraints |
-|--------|------|-------------|-------------|
-| cohort_id | STRING | Unique cohort assignment ID | PK, NOT NULL |
-| policy_id | STRING | Reference to policy | FK, NOT NULL |
-| customer_id | STRING | Reference to customer | FK, NOT NULL |
-| assignment_date | DATE | Date customer added to policy | NOT NULL |
-| cohort_type | STRING | Treatment, Control | NOT NULL |
-| baseline_risk_score | DECIMAL(5,4) | Risk score at assignment | |
-| baseline_churn_bucket | STRING | Highest risk bucket at assignment | |
-| exit_date | DATE | Date customer exited cohort | |
-| exit_reason | STRING | Churned, Retained, PolicyEnded | |
-| created_at | TIMESTAMP | Record creation | NOT NULL |
-
-## Data Validation Rules
-
-### customers
-- customer_id must be unique
-- tenure_months ≥ 0
-- contract_end_date ≥ contract_start_date
-
-### customer_activity  
-- customer_id must exist in customers
-- activity_date ≤ current_date
-
-### predictions
-- All probability columns between 0 and 1
-- risk_tier must be one of: Low, Medium, High, Critical
-- model_version must reference valid MLflow run
-
-### feature_importance
-- p_value between 0 and 1
-- ci_lower < coefficient < ci_upper
-
-## State Transitions
-
-### Customer Churn State
-```
-Active → Early Warning (>30d inactive) → At Risk (>60d) → Likely Churned (>90d)
-                                                                    ↓
-Active → Explicit Cancellation ←────────────────────────────────────┘
+**Transformation Logic**:
+```python
+# Example transformation from raw operational tables
+is_missed_pickup = pickup_status IN ('MISSED', 'NO_SHOW', 'DRIVER_UNAVAILABLE')
+is_late_delivery = actual_delivery_date > scheduled_delivery_date
+days_late = DATEDIFF(actual_delivery_date, scheduled_delivery_date) WHERE > 0 ELSE 0
+is_cancelled_pickup = pickup_status IN ('CANCELLED', 'CANCELLED_BY_CUSTOMER')
 ```
 
-### Policy Cohort State
+---
+
+### 7. claims
+
+**Source**: Claims Data table  
+**Grain**: One row per claim  
+**Purpose**: Claims filed against shipments
+
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| claim_id | STRING | Primary key - claim identifier | Claims Data |
+| pro | STRING | PRO number (FK to shipments.alpha_pro) | Claims Data |
+| customer_code | STRING | FK to customers (denormalized) | Derived |
+| claim_acknowledged_date | DATE | Date claim was acknowledged | Claims Data |
+| amount_filed | DECIMAL(12,2) | Dollar amount filed | Claims Data.$Filed |
+| amount_approved | DECIMAL(12,2) | Dollar amount approved | Claims Data.$Approved Amount |
+| amount_paid | DECIMAL(12,2) | Dollar amount paid | Claims Data.$Paid Amount |
+| claim_type | STRING | Type of claim (Damage, Loss, Shortage, etc.) | Claims Data.Type Claim |
+| claim_status | STRING | Current status (Open, Paid, Denied, etc.) | Derived |
+| created_at | TIMESTAMP | Record creation timestamp | System |
+
+**Primary Key**: claim_id  
+**Foreign Keys**: 
+- pro → shipments.alpha_pro
+- customer_code → customers.customer_code
+
+---
+
+### 8. customer_revenue
+
+**Source**: TOP006  
+**Grain**: One row per customer per period (monthly)  
+**Purpose**: Revenue aggregation for trend analysis
+
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| revenue_id | STRING | Unique ID (UUID) | System |
+| customer_code | STRING | FK to customers | TOP006 |
+| period_date | DATE | First day of month | TOP006 |
+| period_type | STRING | 'MONTHLY' or 'WEEKLY' | System |
+| shipment_count | INTEGER | Number of shipments in period | Aggregated |
+| total_revenue | DECIMAL(14,2) | Total revenue in period | TOP006 |
+| total_weight | DECIMAL(14,2) | Total weight shipped | Aggregated |
+| avg_revenue_per_shipment | DECIMAL(10,2) | Average revenue per shipment | Calculated |
+| created_at | TIMESTAMP | Record creation timestamp | System |
+
+**Primary Key**: revenue_id  
+**Foreign Keys**: customer_code → customers.customer_code
+
+---
+
+### 9. features
+
+**Grain**: One row per customer per scoring date  
+**Purpose**: Computed features for ML model input
+
+| Column | Type | Description |
+|--------|------|-------------|
+| feature_id | STRING | Unique ID (UUID) |
+| customer_code | STRING | FK to customers |
+| feature_set_id | STRING | Version identifier (e.g., "v1_20260209") |
+| computed_date | DATE | Date features were calculated |
+| **Tenure Features** | | |
+| tenure_days | INTEGER | Days since first shipment |
+| tenure_months | INTEGER | Months since first shipment |
+| **Activity Features** | | |
+| shipment_count_30d | INTEGER | Shipments in last 30 days |
+| shipment_count_60d | INTEGER | Shipments in last 60 days |
+| shipment_count_90d | INTEGER | Shipments in last 90 days |
+| days_since_last_shipment | INTEGER | Recency |
+| **Revenue Features** | | |
+| revenue_30d | DECIMAL(12,2) | Revenue last 30 days |
+| revenue_60d | DECIMAL(12,2) | Revenue last 60 days |
+| revenue_90d | DECIMAL(12,2) | Revenue last 90 days |
+| revenue_trend | DECIMAL(8,4) | Revenue change (recent vs prior period) |
+| avg_revenue_per_shipment | DECIMAL(10,2) | Average revenue per shipment |
+| **Operations Features** | | |
+| missed_pickup_count_90d | INTEGER | Missed pickups in 90 days |
+| late_delivery_count_90d | INTEGER | Late deliveries in 90 days |
+| cancelled_pickup_count_90d | INTEGER | Cancelled pickups in 90 days |
+| avg_days_late_90d | DECIMAL(6,2) | Average days late in 90 days |
+| missed_pickup_rate | DECIMAL(6,4) | % of shipments with missed pickup |
+| late_delivery_rate | DECIMAL(6,4) | % of shipments delivered late |
+| on_time_delivery_rate | DECIMAL(6,4) | % of shipments on-time |
+| **Claims Features** | | |
+| claim_count_90d | INTEGER | Claims in last 90 days |
+| claim_count_365d | INTEGER | Claims in last year |
+| total_claims_filed_90d | DECIMAL(12,2) | $ claims filed in 90 days |
+| total_claims_paid_90d | DECIMAL(12,2) | $ claims paid in 90 days |
+| claim_rate | DECIMAL(6,4) | Claims per shipment |
+| avg_claim_amount | DECIMAL(10,2) | Average claim amount |
+| **Service Center Features** | | |
+| distinct_service_centers | INTEGER | Number of service centers used |
+| primary_service_center | STRING | Most frequent service center |
+| service_center_issue_rate | DECIMAL(6,4) | % issues at primary center |
+| **Shipper/Consignee Features** | | |
+| distinct_shippers | INTEGER | Number of unique shippers |
+| distinct_consignees | INTEGER | Number of unique consignees |
+| top_lane_concentration | DECIMAL(6,4) | % volume in top shipper-consignee lane |
+| created_at | TIMESTAMP | Record creation timestamp |
+
+**Primary Key**: feature_id
+
+---
+
+### 10. predictions
+
+**Grain**: One row per customer per churn bucket per prediction date  
+**Purpose**: Model prediction outputs
+
+| Column | Type | Description |
+|--------|------|-------------|
+| prediction_id | STRING | Unique ID (UUID) |
+| customer_code | STRING | FK to customers |
+| prediction_date | DATE | Date prediction was generated |
+| model_version | STRING | Model version identifier |
+| churn_bucket | STRING | 'churn_30d', 'churn_60d', 'churn_90d', 'revenue_decline' |
+| churn_probability | DECIMAL(6,4) | Predicted probability (0.0-1.0) |
+| risk_tier | STRING | 'Low', 'Medium', 'High', 'Critical' |
+| previous_probability | DECIMAL(6,4) | Last week's probability |
+| probability_change | DECIMAL(6,4) | Week-over-week change |
+| alert_triggered | BOOLEAN | True if crossed risk threshold |
+| created_at | TIMESTAMP | Record creation timestamp |
+
+**Primary Key**: prediction_id
+
+---
+
+### 11. churn_events
+
+**Grain**: One row per churn event  
+**Purpose**: Actual churn outcomes for model training/validation
+
+| Column | Type | Description |
+|--------|------|-------------|
+| churn_event_id | STRING | Unique ID (UUID) |
+| customer_code | STRING | FK to customers |
+| event_date | DATE | Date churn was identified |
+| churn_type | STRING | 'inactivity_30d', 'inactivity_60d', 'inactivity_90d', 'revenue_decline', 'contract_cancellation' |
+| revenue_at_churn | DECIMAL(12,2) | Last period revenue before churn |
+| shipments_at_churn | INTEGER | Last period shipment count |
+| created_at | TIMESTAMP | Record creation timestamp |
+
+**Primary Key**: churn_event_id
+
+---
+
+## Churn Definitions for LTL Freight
+
+| Bucket | Definition | Business Logic |
+|--------|------------|----------------|
+| churn_30d | No shipments in >30 days | `days_since_last_shipment > 30` |
+| churn_60d | No shipments in >60 days | `days_since_last_shipment > 60` |
+| churn_90d | No shipments in >90 days | `days_since_last_shipment > 90` |
+| revenue_decline | Revenue dropped >50% vs prior period | `revenue_trend < -0.50` |
+| contract_cancellation | Agreement status = 'Cancelled' | Explicit event |
+
+---
+
+## Key Joins
+
+### Customer → Shipments (via Agreement)
+```sql
+SELECT c.*, s.*
+FROM customers c
+JOIN agreements a ON c.customer_code = a.customer_code
+JOIN shipments s ON a.agreement_number = s.agreement_number
 ```
-Assigned → Active → [Churned | Retained | PolicyEnded]
+
+### Shipment → Operations + Claims
+```sql
+SELECT s.*, o.*, cl.*
+FROM shipments s
+LEFT JOIN operations_events o ON s.alpha_pro = o.alpha_pro
+LEFT JOIN claims cl ON s.alpha_pro = cl.pro
 ```
+
+### Full Customer View
+```sql
+SELECT 
+    c.customer_code,
+    c.customer_name,
+    COUNT(DISTINCT s.alpha_pro) as total_shipments,
+    SUM(s.revenue) as total_revenue,
+    SUM(CASE WHEN o.is_late_delivery THEN 1 ELSE 0 END) as late_deliveries,
+    COUNT(DISTINCT cl.claim_id) as total_claims
+FROM customers c
+LEFT JOIN agreements a ON c.customer_code = a.customer_code
+LEFT JOIN shipments s ON a.agreement_number = s.agreement_number
+LEFT JOIN operations_events o ON s.alpha_pro = o.alpha_pro
+LEFT JOIN claims cl ON s.alpha_pro = cl.pro
+GROUP BY c.customer_code, c.customer_name
+```
+
+---
+
+## Data Quality Rules
+
+| Table | Rule | Severity |
+|-------|------|----------|
+| shipments | alpha_pro must be unique | ERROR |
+| shipments | pickup_date <= delivery_date | WARNING |
+| operations_events | days_late >= 0 | ERROR |
+| claims | amount_paid <= amount_filed | WARNING |
+| customers | customer_code not null | ERROR |
+| customer_revenue | total_revenue >= 0 | ERROR |
+
+---
+
+## Notes
+
+1. **PRO Number**: Alpha PRO is the primary identifier for shipments in LTL freight
+2. **Customer vs Shipper/Consignee**: Customer is the billing entity; shipper/consignee are physical locations
+3. **Denormalization**: customer_code duplicated on shipments/claims for query performance
+4. **Revenue Attribution**: Revenue tracked at shipment level, aggregated to customer monthly
+5. **Service Center**: Track which terminal is responsible for service failures
