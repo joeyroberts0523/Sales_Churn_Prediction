@@ -1,0 +1,100 @@
+{
+  "expectation_suite_name": "customer_activity_suite",
+  "meta": {
+    "great_expectations_version": "0.18.0"
+  },
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "activity_id"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_unique",
+      "kwargs": {
+        "column": "activity_id"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "customer_id"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "activity_date"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "activity_type"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "activity_type",
+        "value_set": [
+          "login",
+          "purchase",
+          "support_ticket",
+          "feature_usage",
+          "page_view",
+          "api_call",
+          "download",
+          "upgrade",
+          "downgrade",
+          "payment"
+        ]
+      },
+      "meta": {
+        "notes": "Valid activity types"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "activity_channel",
+        "value_set": ["web", "mobile", "api", "phone", "email", "in_person", null]
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "activity_value",
+        "min_value": 0,
+        "max_value": null
+      },
+      "meta": {
+        "notes": "Activity value must be non-negative if present"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_dateutil_parseable",
+      "kwargs": {
+        "column": "activity_date"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": {
+        "min_value": 1,
+        "max_value": null
+      },
+      "meta": {}
+    }
+  ],
+  "ge_cloud_id": null,
+  "data_asset_type": null
+}

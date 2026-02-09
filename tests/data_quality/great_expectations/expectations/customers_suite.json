@@ -1,0 +1,107 @@
+{
+  "expectation_suite_name": "customers_suite",
+  "meta": {
+    "great_expectations_version": "0.18.0"
+  },
+  "expectations": [
+    {
+      "expectation_type": "expect_table_columns_to_match_ordered_list",
+      "kwargs": {
+        "column_list": [
+          "customer_id",
+          "customer_name",
+          "email",
+          "segment",
+          "region",
+          "industry",
+          "start_date",
+          "contract_type",
+          "contract_value",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "meta": {
+        "notes": "Expected columns for customers table"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "customer_id"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_unique",
+      "kwargs": {
+        "column": "customer_id"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "created_at"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "updated_at"
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "segment",
+        "value_set": ["Enterprise", "SMB", "Consumer", "Government", "Education", null]
+      },
+      "meta": {
+        "notes": "Valid customer segments"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "contract_type",
+        "value_set": ["Monthly", "Annual", "Multi-year", "Trial", null]
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "contract_value",
+        "min_value": 0,
+        "max_value": 10000000
+      },
+      "meta": {
+        "notes": "Contract value must be non-negative"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "is_active",
+        "value_set": [true, false]
+      },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": {
+        "min_value": 1,
+        "max_value": null
+      },
+      "meta": {
+        "notes": "Table should not be empty"
+      }
+    }
+  ],
+  "ge_cloud_id": null,
+  "data_asset_type": null
+}

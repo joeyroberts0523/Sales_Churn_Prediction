@@ -1,0 +1,54 @@
+{
+  "name": "churn_data_checkpoint",
+  "config_version": 1.0,
+  "template_name": null,
+  "module_name": "great_expectations.checkpoint",
+  "class_name": "Checkpoint",
+  "run_name_template": "%Y%m%d-%H%M%S-churn-validation",
+  "expectation_suite_name": null,
+  "batch_request": null,
+  "action_list": [
+    {
+      "name": "store_validation_result",
+      "action": {
+        "class_name": "StoreValidationResultAction"
+      }
+    },
+    {
+      "name": "store_evaluation_params",
+      "action": {
+        "class_name": "StoreEvaluationParametersAction"
+      }
+    },
+    {
+      "name": "update_data_docs",
+      "action": {
+        "class_name": "UpdateDataDocsAction",
+        "site_names": ["local_site"]
+      }
+    }
+  ],
+  "evaluation_parameters": {},
+  "runtime_configuration": {},
+  "validations": [
+    {
+      "batch_request": {
+        "datasource_name": "pandas_datasource",
+        "data_connector_name": "default_runtime_data_connector",
+        "data_asset_name": "customers_data"
+      },
+      "expectation_suite_name": "customers_suite"
+    },
+    {
+      "batch_request": {
+        "datasource_name": "pandas_datasource",
+        "data_connector_name": "default_runtime_data_connector",
+        "data_asset_name": "customer_activity_data"
+      },
+      "expectation_suite_name": "customer_activity_suite"
+    }
+  ],
+  "profilers": [],
+  "ge_cloud_id": null,
+  "expectation_suite_ge_cloud_id": null
+}

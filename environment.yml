@@ -1,0 +1,42 @@
+# Microsoft Fabric Environment Configuration
+# Upload this to Fabric workspace to create custom environment
+
+name: churn-prediction-env
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Core Python (Fabric compatible)
+  - python>=3.10
+  
+  # Data Processing
+  - pandas>=2.0.0
+  - numpy>=1.24.0
+  - scipy>=1.10.0
+  - pyarrow>=14.0.0
+  
+  # Machine Learning
+  - scikit-learn>=1.3.0
+  
+  # Visualization
+  - matplotlib>=3.7.0
+  - seaborn>=0.12.0
+  
+  # Pip dependencies (not in conda)
+  - pip
+  - pip:
+    # Experiment Tracking
+    - mlflow>=2.8.0
+    
+    # Data Validation
+    - great-expectations>=0.18.0
+    
+    # Testing
+    - pytest>=7.4.0
+    - pytest-cov>=4.1.0
+
+# Fabric-specific notes:
+# - Delta Lake support is built into Fabric runtime
+# - Spark context is provided by Fabric notebooks
+# - notebookutils is available in Fabric notebooks natively
