@@ -18,17 +18,17 @@
 
 ---
 
-## Phase 1: Setup (Shared Infrastructure)
+## Phase 1: Setup (Shared Infrastructure) ✅
 
 **Purpose**: Project initialization and Fabric workspace setup
 
-- [ ] T001 Create project directory structure per plan.md (src/, notebooks/, tests/, powerbi/)
-- [ ] T002 [P] Create src/__init__.py with package initialization
-- [ ] T003 [P] Create src/utils/__init__.py and src/utils/config.py with configuration management
-- [ ] T004 [P] Create src/utils/logging.py with structured logging setup
-- [ ] T005 [P] Create requirements.txt with dependencies (scikit-learn, pandas, numpy, scipy, mlflow, great-expectations)
-- [ ] T006 [P] Create environment.yml for Fabric environment configuration
-- [ ] T007 Create .gitignore for Python/Jupyter artifacts
+- [x] T001 Create project directory structure per plan.md (src/, notebooks/, tests/, powerbi/)
+- [x] T002 [P] Create src/__init__.py with package initialization
+- [x] T003 [P] Create src/utils/__init__.py and src/utils/config.py with configuration management
+- [x] T004 [P] Create src/utils/logging.py with structured logging setup
+- [x] T005 [P] Create requirements.txt with dependencies (scikit-learn, pandas, numpy, scipy, mlflow, great-expectations)
+- [x] T006 [P] Create environment.yml for Fabric environment configuration
+- [x] T007 Create .gitignore for Python/Jupyter artifacts
 
 ---
 
@@ -40,32 +40,32 @@
 
 ### Data Layer
 
-- [ ] T008 Create src/data/__init__.py
-- [ ] T009 [P] Create src/data/ingestion.py with Lakehouse data loading functions
-- [ ] T010 [P] Create src/data/preprocessing.py with missing value handling and encoding
-- [ ] T011 [P] Create src/data/validation.py with data quality checks and freshness validation
+- [x] T008 Create src/data/__init__.py
+- [x] T009 [P] Create src/data/ingestion.py with Lakehouse data loading functions
+- [x] T010 [P] Create src/data/preprocessing.py with missing value handling and encoding
+- [x] T011 [P] Create src/data/validation.py with data quality checks and freshness validation
 
 ### Data Model Tables (Delta)
 
-- [ ] T012 Create Lakehouse Delta table schema for `customers` per data-model.md
-- [ ] T013 [P] Create Lakehouse Delta table schema for `customer_activity` per data-model.md
-- [ ] T014 [P] Create Lakehouse Delta table schema for `churn_events` per data-model.md
-- [ ] T015 [P] Create Lakehouse Delta table schema for `features` per data-model.md
-- [ ] T016 [P] Create Lakehouse Delta table schema for `predictions` per data-model.md
-- [ ] T017 [P] Create Lakehouse Delta table schema for `model_metrics` per data-model.md
-- [ ] T018 [P] Create Lakehouse Delta table schema for `feature_importance` per data-model.md
+- [x] T012 Create Lakehouse Delta table schema for `customers` per data-model.md
+- [x] T013 [P] Create Lakehouse Delta table schema for `customer_activity` per data-model.md
+- [x] T014 [P] Create Lakehouse Delta table schema for `churn_events` per data-model.md
+- [x] T015 [P] Create Lakehouse Delta table schema for `features` per data-model.md
+- [x] T016 [P] Create Lakehouse Delta table schema for `predictions` per data-model.md
+- [x] T017 [P] Create Lakehouse Delta table schema for `model_metrics` per data-model.md
+- [x] T018 [P] Create Lakehouse Delta table schema for `feature_importance` per data-model.md
 
 ### Data Validation Framework
 
-- [ ] T019 Create tests/data_quality/great_expectations/ directory structure
-- [ ] T020 [P] Create Great Expectations expectation suite for customers table
-- [ ] T021 [P] Create Great Expectations expectation suite for customer_activity table
-- [ ] T022 [P] Create Great Expectations checkpoint configuration
+- [x] T019 Create tests/data_quality/great_expectations/ directory structure
+- [x] T020 [P] Create Great Expectations expectation suite for customers table
+- [x] T021 [P] Create Great Expectations expectation suite for customer_activity table
+- [x] T022 [P] Create Great Expectations checkpoint configuration
 
 ### Exploration Notebook
 
-- [ ] T023 Create notebooks/01_data_exploration.ipynb with EDA and data profiling
-- [ ] T024 Document baseline data statistics and quality issues in notebook
+- [x] T023 Create notebooks/01_data_exploration.ipynb with EDA and data profiling
+- [ ] T024 Document baseline data statistics and quality issues in notebook (pending actual data)
 
 **Checkpoint**: Foundation ready - Lakehouse tables created, data validation configured, EDA complete
 
@@ -79,39 +79,39 @@
 
 ### Feature Engineering (shared by US1 & US2)
 
-- [ ] T025 Create src/features/__init__.py
-- [ ] T026 [P] [US1] Create src/features/engineering.py with feature transformation functions
-- [ ] T027 [P] [US1] Create src/features/selection.py with feature selection utilities
-- [ ] T028 [US1] Create notebooks/02_feature_engineering.ipynb implementing churn labels for buckets (>30d, >60d, >90d, explicit)
-- [ ] T029 [US1] Add feature calculations to notebook: tenure, days_since_last_activity, purchase metrics, support tickets
-- [ ] T030 [US1] Implement missing value imputation strategy in notebook (document in markdown cells)
-- [ ] T031 [US1] Output features to Lakehouse `features` Delta table
+- [x] T025 Create src/features/__init__.py
+- [x] T026 [P] [US1] Create src/features/engineering.py with feature transformation functions
+- [x] T027 [P] [US1] Create src/features/selection.py with feature selection utilities
+- [x] T028 [US1] Create notebooks/02_feature_engineering.ipynb implementing churn labels for buckets (>30d, >60d, >90d, explicit)
+- [x] T029 [US1] Add feature calculations to notebook: tenure, days_since_last_activity, purchase metrics, support tickets
+- [x] T030 [US1] Implement missing value imputation strategy in notebook (document in markdown cells)
+- [ ] T031 [US1] Output features to Lakehouse `features` Delta table (pending data connection)
 
 ### Model Development (US1 & US2)
 
-- [ ] T032 Create src/models/__init__.py
-- [ ] T033 [P] [US1] Create src/models/training.py with LogisticRegression training pipeline
-- [ ] T034 [P] [US1] Create src/models/evaluation.py with metrics calculation (AUC-ROC, precision, recall, F1)
-- [ ] T035 [P] [US2] Create src/models/registry.py with MLflow model registration functions
-- [ ] T036 [US1] Create notebooks/03_model_training.ipynb with stratified k-fold CV and class_weight='balanced'
-- [ ] T037 [US1] Configure MLflow experiment tracking in training notebook (log hyperparameters, metrics, artifacts)
-- [ ] T038 [US1] Train separate models for each churn bucket (30d, 60d, 90d, explicit) in notebook
-- [ ] T039 [US1] Validate AUC-ROC ≥0.70 for each model on holdout test set
+- [x] T032 Create src/models/__init__.py
+- [x] T033 [P] [US1] Create src/models/training.py with LogisticRegression training pipeline
+- [x] T034 [P] [US1] Create src/models/evaluation.py with metrics calculation (AUC-ROC, precision, recall, F1)
+- [x] T035 [P] [US2] Create src/models/registry.py with MLflow model registration functions
+- [x] T036 [US1] Create notebooks/03_model_training.ipynb with stratified k-fold CV and class_weight='balanced'
+- [x] T037 [US1] Configure MLflow experiment tracking in training notebook (log hyperparameters, metrics, artifacts)
+- [x] T038 [US1] Train separate models for each churn bucket (30d, 60d, 90d, explicit) in notebook
+- [ ] T039 [US1] Validate AUC-ROC ≥0.70 for each model on holdout test set (pending data connection)
 
 ### Feature Importance (US2)
 
-- [ ] T040 Create src/reporting/__init__.py
-- [ ] T041 [P] [US2] Create src/reporting/feature_importance.py with coefficient extraction and odds ratio calculation
-- [ ] T042 [US2] Create notebooks/06_feature_importance.ipynb extracting coefficients, odds ratios, p-values, confidence intervals
-- [ ] T043 [US2] Generate feature_importance records per contracts/feature-importance-output.json schema
-- [ ] T044 [US2] Output feature importance to Lakehouse `feature_importance` Delta table
+- [x] T040 Create src/reporting/__init__.py
+- [x] T041 [P] [US2] Create src/reporting/feature_importance.py with coefficient extraction and odds ratio calculation
+- [x] T042 [US2] Create notebooks/06_feature_importance.ipynb extracting coefficients, odds ratios, p-values, confidence intervals
+- [x] T043 [US2] Generate feature_importance records per contracts/feature-importance-output.json schema
+- [ ] T044 [US2] Output feature importance to Lakehouse `feature_importance` Delta table (pending data connection)
 
 ### Model Evaluation
 
-- [ ] T045 [US1] Create notebooks/04_model_evaluation.ipynb with comprehensive performance analysis
-- [ ] T046 [US1] Generate confusion matrices and classification reports per bucket
-- [ ] T047 [US1] Output model metrics to Lakehouse `model_metrics` Delta table
-- [ ] T048 [US1] Register best-performing models in MLflow model registry
+- [x] T045 [US1] Create notebooks/04_model_evaluation.ipynb with comprehensive performance analysis
+- [x] T046 [US1] Generate confusion matrices and classification reports per bucket
+- [ ] T047 [US1] Output model metrics to Lakehouse `model_metrics` Delta table (pending data connection)
+- [ ] T048 [US1] Register best-performing models in MLflow model registry (pending data connection)
 
 **Checkpoint**: User Story 1 & 2 complete - Models trained with AUC-ROC ≥0.70, feature importance report available
 
@@ -125,13 +125,13 @@
 
 ### Scoring Implementation
 
-- [ ] T049 Create src/scoring/__init__.py
-- [ ] T050 [P] [US1] Create src/scoring/batch.py with batch scoring logic
-- [ ] T051 [P] [US1] Create src/scoring/risk_tiers.py with risk categorization (Low/Medium/High/Critical)
-- [ ] T052 [US1] Create notebooks/05_batch_scoring.ipynb loading registered models and scoring all customers
-- [ ] T053 [US1] Output predictions per contracts/prediction-output.json schema
-- [ ] T054 [US1] Save predictions to Lakehouse `predictions` Delta table with timestamps
-- [ ] T055 [US1] Add data freshness check (fail if data >7 days old)
+- [x] T049 Create src/scoring/__init__.py
+- [x] T050 [P] [US1] Create src/scoring/batch.py with batch scoring logic
+- [x] T051 [P] [US1] Create src/scoring/risk_tiers.py with risk categorization (Low/Medium/High/Critical)
+- [x] T052 [US1] Create notebooks/05_batch_scoring.ipynb loading registered models and scoring all customers
+- [x] T053 [US1] Output predictions per contracts/prediction-output.json schema
+- [x] T055 [US1] Add data freshness check (fail if data >7 days old)
+- [ ] T054 [US1] Save predictions to Lakehouse `predictions` Delta table with timestamps (pending data connection)
 
 **Checkpoint**: Weekly scoring pipeline complete - predictions available in Lakehouse
 
@@ -150,10 +150,10 @@
 
 ### Policy Reporting
 
-- [ ] T058 [P] [US3] Create src/reporting/policy_efficacy.py with cohort comparison and statistical tests
-- [ ] T059 [US3] Create notebooks/07_policy_monitoring.ipynb with policy efficacy analysis
-- [ ] T060 [US3] Implement chi-square or t-test for statistical significance between treatment/control groups
-- [ ] T061 [US3] Generate policy efficacy summary with baseline vs current churn rates
+- [x] T058 [P] [US3] Create src/reporting/policy_efficacy.py with cohort comparison and statistical tests
+- [x] T059 [US3] Create notebooks/07_policy_monitoring.ipynb with policy efficacy analysis
+- [x] T060 [US3] Implement chi-square or t-test for statistical significance between treatment/control groups
+- [x] T061 [US3] Generate policy efficacy summary with baseline vs current churn rates
 
 ### Power BI Dashboards (US1, US2, US3)
 
@@ -194,9 +194,9 @@
 
 ### Testing
 
-- [ ] T072 [P] Create tests/unit/test_preprocessing.py with unit tests for data preprocessing
-- [ ] T073 [P] Create tests/unit/test_feature_engineering.py with unit tests for feature calculations
-- [ ] T074 [P] Create tests/unit/test_risk_tiers.py with unit tests for risk categorization
+- [x] T072 [P] Create tests/unit/test_preprocessing.py with unit tests for data preprocessing
+- [x] T073 [P] Create tests/unit/test_feature_engineering.py with unit tests for feature calculations
+- [x] T074 [P] Create tests/unit/test_risk_tiers.py with unit tests for risk categorization
 - [ ] T075 Create tests/integration/test_data_pipeline.py with end-to-end data flow test
 - [ ] T076 [P] Create tests/integration/test_scoring_pipeline.py with scoring integration test
 
