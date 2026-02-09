@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Prediction Output",
+  "description": "Schema for customer churn prediction output records",
+  "type": "object",
+  "required": [
+    "prediction_id",
+    "customer_id",
+    "prediction_date",
+    "model_version",
+    "prob_churn_30d",
+    "prob_churn_60d",
+    "prob_churn_90d",
+    "prob_explicit_cancel",
+    "risk_tier",
+    "risk_score_composite"
+  ],
+  "properties": {
+    "prediction_id": {
+      "type": "string",
+      "description": "Unique identifier for this prediction record"
+    },
+    "customer_id": {
+      "type": "string",
+      "description": "Reference to the customer being scored"
+    },
+    "prediction_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the prediction was generated (ISO 8601)"
+    },
+    "model_version": {
+      "type": "string",
+      "description": "MLflow run ID or model version used for prediction"
+    },
+    "prob_churn_30d": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Probability of customer becoming inactive for >30 days"
+    },
+    "prob_churn_60d": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Probability of customer becoming inactive for >60 days"
+    },
+    "prob_churn_90d": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Probability of customer becoming inactive for >90 days"
+    },
+    "prob_explicit_cancel": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Probability of customer explicitly cancelling"
+    },
+    "risk_tier": {
+      "type": "string",
+      "enum": ["Low", "Medium", "High", "Critical"],
+      "description": "Categorized risk level based on composite score thresholds"
+    },
+    "risk_score_composite": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Weighted composite of all churn probabilities"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when record was created"
+    }
+  },
+  "examples": [
+    {
+      "prediction_id": "pred-2026-02-09-cust001",
+      "customer_id": "CUST001",
+      "prediction_date": "2026-02-09",
+      "model_version": "runs:/abc123def456",
+      "prob_churn_30d": 0.45,
+      "prob_churn_60d": 0.62,
+      "prob_churn_90d": 0.78,
+      "prob_explicit_cancel": 0.15,
+      "risk_tier": "High",
+      "risk_score_composite": 0.65,
+      "created_at": "2026-02-09T10:30:00Z"
+    }
+  ]
+}

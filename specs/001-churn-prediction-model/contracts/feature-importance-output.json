@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Feature Importance Output",
+  "description": "Schema for feature importance analysis results from logistic regression model",
+  "type": "object",
+  "required": [
+    "importance_id",
+    "model_version",
+    "churn_bucket",
+    "feature_name",
+    "coefficient",
+    "odds_ratio",
+    "p_value",
+    "importance_rank"
+  ],
+  "properties": {
+    "importance_id": {
+      "type": "string",
+      "description": "Unique identifier for this importance record"
+    },
+    "model_version": {
+      "type": "string",
+      "description": "MLflow run ID or model version"
+    },
+    "churn_bucket": {
+      "type": "string",
+      "enum": ["30_day", "60_day", "90_day", "explicit"],
+      "description": "Which churn bucket this model predicts"
+    },
+    "feature_name": {
+      "type": "string",
+      "description": "Name of the feature/variable"
+    },
+    "coefficient": {
+      "type": "number",
+      "description": "Logistic regression coefficient (log-odds)"
+    },
+    "odds_ratio": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Exponentiated coefficient - multiplicative effect on odds of churn"
+    },
+    "std_error": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Standard error of the coefficient estimate"
+    },
+    "z_score": {
+      "type": "number",
+      "description": "Wald z-statistic (coefficient / std_error)"
+    },
+    "p_value": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Statistical significance (two-tailed test)"
+    },
+    "ci_lower": {
+      "type": "number",
+      "description": "95% confidence interval lower bound for coefficient"
+    },
+    "ci_upper": {
+      "type": "number",
+      "description": "95% confidence interval upper bound for coefficient"
+    },
+    "importance_rank": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Rank by absolute coefficient value (1 = most important)"
+    },
+    "is_significant": {
+      "type": "boolean",
+      "description": "True if p_value < 0.05"
+    },
+    "interpretation": {
+      "type": "string",
+      "description": "Human-readable interpretation of the feature's effect"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when record was created"
+    }
+  },
+  "examples": [
+    {
+      "importance_id": "imp-2026-02-09-90day-001",
+      "model_version": "runs:/abc123def456",
+      "churn_bucket": "90_day",
+      "feature_name": "days_since_last_activity",
+      "coefficient": 0.0523,
+      "odds_ratio": 1.0537,
+      "std_error": 0.0089,
+      "z_score": 5.876,
+      "p_value": 0.00001,
+      "ci_lower": 0.0349,
+      "ci_upper": 0.0697,
+      "importance_rank": 1,
+      "is_significant": true,
+      "interpretation": "Each additional day of inactivity increases churn odds by 5.4%",
+      "created_at": "2026-02-09T10:30:00Z"
+    },
+    {
+      "importance_id": "imp-2026-02-09-90day-002",
+      "model_version": "runs:/abc123def456",
+      "churn_bucket": "90_day",
+      "feature_name": "support_tickets_90d",
+      "coefficient": 0.1842,
+      "odds_ratio": 1.2023,
+      "std_error": 0.0312,
+      "z_score": 5.903,
+      "p_value": 0.00001,
+      "ci_lower": 0.1231,
+      "ci_upper": 0.2453,
+      "importance_rank": 2,
+      "is_significant": true,
+      "interpretation": "Each additional support ticket in 90 days increases churn odds by 20%",
+      "created_at": "2026-02-09T10:30:00Z"
+    }
+  ]
+}
