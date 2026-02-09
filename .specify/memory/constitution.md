@@ -1,50 +1,75 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+==================
+Version change: 0.0.0 → 1.0.0
+Modified principles: Initial creation
+Added sections: Core Principles (6), Technology Stack, Model Quality Standards, Governance
+Removed sections: None (initial)
+Templates requiring updates: ✅ N/A (initial constitution)
+Follow-up TODOs: None
+-->
+
+# Sales Churn Prediction Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Data-First Development
+All features and model improvements MUST begin with understanding the data. Data exploration, quality assessment, and feature engineering precede any model training. Every data transformation MUST be documented with clear rationale. No model shall be built on data that has not been profiled and validated.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Reproducibility (NON-NEGOTIABLE)
+Every experiment, model training run, and analysis MUST be fully reproducible. This requires:
+- Version-controlled notebooks and scripts
+- Pinned dependencies and environment specifications
+- Logged hyperparameters, random seeds, and data versions
+- Clear documentation of data splits (train/validation/test)
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Interpretability Over Complexity
+Given the business goal of identifying churn drivers and monitoring policy efficacy, model interpretability is paramount. Logistic regression is the baseline model. Any more complex model MUST demonstrate significant improvement AND provide equivalent interpretability through feature importance, SHAP values, or similar techniques.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Feature Importance as First-Class Output
+The primary deliverable is not just predictions but actionable insights. Feature importance analysis MUST:
+- Identify top correlates of churn with statistical significance
+- Distinguish between correlation and actionable drivers
+- Support business decisions on policy interventions
+- Be updated and validated with each model refresh
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Policy Monitoring Integration
+The model MUST support ongoing policy efficacy tracking:
+- Baseline churn rates before policy implementation
+- Segmented analysis for policy-targeted customers
+- Time-series tracking of churn rates post-intervention
+- A/B testing framework support where applicable
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+### VI. Microsoft Fabric Native
+All data pipelines, transformations, and model training MUST leverage Microsoft Fabric capabilities:
+- Data stored in Fabric Lakehouse or Warehouse
+- Notebooks for exploration and model development
+- MLflow for experiment tracking and model registry
+- Power BI integration for stakeholder dashboards
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+## Technology Stack
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+- **Platform**: Microsoft Fabric (Lakehouse, Data Engineering, Data Science)
+- **Languages**: Python 3.11+ (PySpark for distributed processing)
+- **ML Framework**: scikit-learn for logistic regression, MLflow for tracking
+- **Visualization**: matplotlib, seaborn for analysis; Power BI for dashboards
+- **Version Control**: Git with GitHub for code and notebook versioning
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+## Model Quality Standards
+
+- **Minimum Metrics**: AUC-ROC ≥ 0.70, Precision and Recall balanced for business needs
+- **Validation**: Stratified k-fold cross-validation (k=5 minimum)
+- **Drift Monitoring**: Monthly model performance review against holdout data
+- **Documentation**: Every model version MUST have a model card documenting training data, features, performance metrics, and known limitations
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other development practices for the Sales Churn Prediction project. Amendments require:
+1. Documented justification for the change
+2. Review of impact on existing models and pipelines
+3. Version increment following semantic versioning
+4. Update to all dependent documentation
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+All pull requests MUST verify compliance with these principles. Model deployments require sign-off confirming adherence to reproducibility and interpretability standards.
+
+**Version**: 1.0.0 | **Ratified**: 2026-02-09 | **Last Amended**: 2026-02-09
