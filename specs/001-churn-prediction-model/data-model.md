@@ -44,6 +44,7 @@ This data model supports churn prediction for LTL (Less-than-Truckload) freight 
 | pickups | FMP030 (Pickup Header) | PU_REQUEST_NUMBER, shipper_number |
 | door_pressure | PlanDoorPressure | service_center, lp_date |
 | door_parking_count | Reference | service_center |
+| cwi_compliance | CWIReporting.dbo.CWI_Compliance | pro_key |
 | customers | TOP006 | customer_code |
 | customer_revenue | TOP006 | customer_code, period |
 | claims | Claims Data | claim_id, pro |
@@ -369,7 +370,42 @@ Higher pressure indicates a more congested terminal, potentially correlating wit
 
 ---
 
-### 11. claims
+### 11. cwi_compliance
+
+**Source**: CWIReporting.dbo.CWI_Compliance  
+**Grain**: One row per PRO inspected  
+**Purpose**: Catch Weight Inspection (reweigh/reclassification) compliance tracking
+
+CWI is the inspection program that verifies customer-declared weights and freight classes. 
+High flagged rates indicate discrepancies → unexpected billing adjustments → potential disputes.
+
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| pro | STRING | Alpha PRO number | ALPHA_PRO_NUMBER |
+| pro_suffix | STRING | PRO suffix (blank or MR) | ALPHA_PRO_SUFFIX |
+| pro_key | STRING | PRO-Suffix concatenated key (PK) | Derived |
+| pickup_date | DATE | Pickup date | PU_Date |
+| delivery_date | DATE | Delivery date | DELIVERY_DATE8 (converted) |
+| target_type | STRING | D=Delivery, W=Weight inspection | TARGETTYPE |
+| pl_term | STRING | Terminal where inspection occurred | PLTERM → FRP015 |
+| pl_emp_id | STRING | Employee ID who performed inspection | PLEMPID |
+| pl_touches | INTEGER | Number of inspection touches | PL_Touches |
+| selected | INTEGER | 1=Selected for inspection (event capable) | Selected AND Event_Capable |
+| flagged | INTEGER | 1=Flagged for weight/class discrepancy | Flagged |
+| event | INTEGER | 1=Inspection event occurred | EVENT_TIMESTAMP IS NOT NULL |
+| ignore | INTEGER | 1=Ignored (IG or reasonableness check) | IG_Event OR EVENT_PROCESS_CODE='IG' OR Reasonableness_Check |
+| event_complete | INTEGER | 1=Inspection completed | Event_Complete |
+| additional_event | INTEGER | 1=Unselected PRO with event (extra) | Selected=0 AND EVENT_TIMESTAMP IS NOT NULL |
+
+**Primary Key**: pro_key
+
+**Key Metrics**:
+- Flagged Rate = Flagged / Events → High rate indicates billing discrepancy risk
+- Completed Rate = Event_Complete / Events → Compliance tracking
+
+---
+
+### 12. claims
 
 **Source**: Claims Data table  
 **Grain**: One row per claim  
@@ -479,6 +515,12 @@ Higher pressure indicates a more congested terminal, potentially correlating wit
 | lanes_abandoned_pct | DECIMAL(6,4) | % of historical lanes that were abandoned |
 | new_lanes_90d | INTEGER | New lanes started in last 90 days |
 | lane_churn_rate | DECIMAL(6,4) | Net lane change rate: (new - abandoned) / total historical |
+| **CWI Compliance Features** | | |
+| cwi_inspections_90d | INTEGER | CWI inspection events in 90 days |
+| cwi_flagged_90d | INTEGER | Shipments flagged for weight/class discrepancy |
+| cwi_flagged_rate | DECIMAL(6,4) | % of inspections flagged (billing risk indicator) |
+| cwi_touches_90d | INTEGER | Total inspection touches in 90 days |
+| cwi_completed_rate | DECIMAL(6,4) | % of inspections completed |
 | created_at | TIMESTAMP | Record creation timestamp |
 
 **Primary Key**: feature_id

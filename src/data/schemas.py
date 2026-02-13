@@ -252,6 +252,12 @@ FEATURES_SCHEMA = TableSchema(
         ColumnDef("lanes_abandoned_pct", "DECIMAL(6,4)", True, "% of historical lanes abandoned"),
         ColumnDef("new_lanes_90d", "INT", True, "New lanes started in last 90 days"),
         ColumnDef("lane_churn_rate", "DECIMAL(6,4)", True, "Net lane change rate (new - abandoned) / total"),
+        # CWI Compliance Features (Reweigh/Reclass)
+        ColumnDef("cwi_inspections_90d", "INT", True, "CWI inspection events in 90 days"),
+        ColumnDef("cwi_flagged_90d", "INT", True, "Shipments flagged for weight/class discrepancy"),
+        ColumnDef("cwi_flagged_rate", "DECIMAL(6,4)", True, "% of inspections flagged"),
+        ColumnDef("cwi_touches_90d", "INT", True, "Total inspection touches in 90 days"),
+        ColumnDef("cwi_completed_rate", "DECIMAL(6,4)", True, "% of inspections completed"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
     ]
 )
@@ -511,6 +517,32 @@ DOOR_PARKING_COUNT_SCHEMA = TableSchema(
     ]
 )
 
+CWI_COMPLIANCE_SCHEMA = TableSchema(
+    name="cwi_compliance",
+    description="Catch Weight Inspection compliance - reweigh/reclassification inspection events",
+    source_system="CWIReporting.dbo.CWI_Compliance",
+    primary_key=["pro_key"],
+    columns=[
+        ColumnDef("pro", "STRING", False, "Alpha PRO number"),
+        ColumnDef("pro_suffix", "STRING", True, "PRO suffix (blank or MR)"),
+        ColumnDef("pro_key", "STRING", False, "PRO-Suffix key"),
+        ColumnDef("pickup_date", "DATE", True, "Pickup date"),
+        ColumnDef("delivery_date", "DATE", True, "Delivery date"),
+        ColumnDef("target_type", "STRING", True, "D=Delivery, W=Weight inspection target"),
+        ColumnDef("pl_term", "STRING", True, "Terminal where inspection occurred"),
+        ColumnDef("pl_emp_id", "STRING", True, "Employee ID who performed inspection"),
+        ColumnDef("pl_touches", "INT", True, "Number of inspection touches"),
+        ColumnDef("selected", "INT", True, "1=Selected for inspection (event capable)"),
+        ColumnDef("flagged", "INT", True, "1=Flagged for weight/class discrepancy"),
+        ColumnDef("event", "INT", True, "1=Inspection event occurred"),
+        ColumnDef("ignore", "INT", True, "1=Ignored (IG event or reasonableness check)"),
+        ColumnDef("event_complete", "INT", True, "1=Inspection event completed"),
+        ColumnDef("additional_event", "INT", True, "1=Unselected PRO with event (extra inspection)"),
+        ColumnDef("customer_code", "STRING", True, "FK to customers (derived from PRO)"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
 
 # =============================================================================
 # Schema Registry
@@ -527,6 +559,7 @@ ALL_SCHEMAS: Dict[str, TableSchema] = {
     "pickups": PICKUPS_SCHEMA,
     "door_pressure": DOOR_PRESSURE_SCHEMA,
     "door_parking_count": DOOR_PARKING_COUNT_SCHEMA,
+    "cwi_compliance": CWI_COMPLIANCE_SCHEMA,
     "claims": CLAIMS_SCHEMA,
     "customer_revenue": CUSTOMER_REVENUE_SCHEMA,
     "features": FEATURES_SCHEMA,

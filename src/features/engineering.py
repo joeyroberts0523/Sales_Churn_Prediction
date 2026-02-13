@@ -854,6 +854,122 @@ def create_lane_abandonment_features(
     return result
 
 
+def create_cwi_features(
+    cwi_df: pd.DataFrame,
+    shipments_df: pd.DataFrame,
+    customer_codes: Optional[List[str]] = None,
+    reference_date: Optional[datetime] = None
+) -> pd.DataFrame:
+    """
+    Create CWI (Catch Weight Inspection) compliance features.
+    
+    CWI is the reweigh/reclassification inspection program. High flagged rates
+    indicate the customer's declared weights/classes don't match actual,
+    leading to unexpected charges and potential billing disputes.
+    
+    Features created:
+    - cwi_inspections_90d: Number of CWI inspection events
+    - cwi_flagged_90d: Shipments flagged for weight/class discrepancy
+    - cwi_flagged_rate: % of inspections that were flagged
+    - cwi_touches_90d: Total inspection touches
+    - cwi_completed_rate: % of inspections that were completed
+    
+    Args:
+        cwi_df: CWI compliance data from CWIReporting.dbo.CWI_Compliance
+        shipments_df: Shipment data to link PRO to customer
+        customer_codes: Optional list of customer codes to filter
+        reference_date: Reference date for calculations
+        
+    Returns:
+        DataFrame with customer_code and CWI features
+    """
+    if reference_date is None:
+        reference_date = datetime.now()
+    
+    cutoff_90d = reference_date - timedelta(days=90)
+    
+    cwi_df = cwi_df.copy()
+    
+    # Use delivery_date or pickup_date for filtering
+    date_col = "delivery_date" if "delivery_date" in cwi_df.columns else "pickup_date"
+    if date_col in cwi_df.columns:
+        cwi_df[date_col] = pd.to_datetime(cwi_df[date_col], errors="coerce")
+        cwi_df = cwi_df[cwi_df[date_col] >= cutoff_90d]
+    
+    if len(cwi_df) == 0:
+        return pd.DataFrame(columns=["customer_code"])
+    
+    # Link CWI data to customers via PRO number
+    # If customer_code not in cwi_df, need to join via shipments
+    if "customer_code" not in cwi_df.columns and "pro" in cwi_df.columns:
+        if "alpha_pro_number" in shipments_df.columns and "customer_code" in shipments_df.columns:
+            pro_customer = shipments_df[["alpha_pro_number", "customer_code"]].drop_duplicates()
+            pro_customer = pro_customer.rename(columns={"alpha_pro_number": "pro"})
+            cwi_df = cwi_df.merge(pro_customer, on="pro", how="left")
+    
+    if "customer_code" not in cwi_df.columns:
+        logger.warning("Cannot link CWI data to customers - no customer_code")
+        return pd.DataFrame(columns=["customer_code"])
+    
+    if customer_codes is not None:
+        cwi_df = cwi_df[cwi_df["customer_code"].isin(customer_codes)]
+    
+    if len(cwi_df) == 0:
+        return pd.DataFrame(columns=["customer_code"])
+    
+    # Aggregate by customer
+    # event=1 means inspection occurred, flagged=1 means discrepancy found
+    agg_dict = {}
+    
+    if "event" in cwi_df.columns:
+        agg_dict["event"] = "sum"
+    if "flagged" in cwi_df.columns:
+        agg_dict["flagged"] = "sum"
+    if "pl_touches" in cwi_df.columns:
+        agg_dict["pl_touches"] = "sum"
+    if "event_complete" in cwi_df.columns:
+        agg_dict["event_complete"] = "sum"
+    if "pro" in cwi_df.columns:
+        agg_dict["pro"] = "count"  # Total PROs inspected
+    
+    if not agg_dict:
+        return pd.DataFrame(columns=["customer_code"])
+    
+    agg = cwi_df.groupby("customer_code").agg(agg_dict).reset_index()
+    
+    # Rename columns
+    rename_map = {
+        "event": "cwi_inspections_90d",
+        "flagged": "cwi_flagged_90d",
+        "pl_touches": "cwi_touches_90d",
+        "event_complete": "cwi_completed_90d",
+        "pro": "cwi_pros_90d"
+    }
+    agg = agg.rename(columns={k: v for k, v in rename_map.items() if k in agg.columns})
+    
+    # Calculate rates
+    if "cwi_inspections_90d" in agg.columns:
+        inspections = agg["cwi_inspections_90d"].replace(0, 1)
+        
+        if "cwi_flagged_90d" in agg.columns:
+            agg["cwi_flagged_rate"] = agg["cwi_flagged_90d"] / inspections
+        
+        if "cwi_completed_90d" in agg.columns:
+            agg["cwi_completed_rate"] = agg["cwi_completed_90d"] / inspections
+    
+    # Select output columns
+    output_cols = ["customer_code"]
+    feature_cols = ["cwi_inspections_90d", "cwi_flagged_90d", "cwi_flagged_rate",
+                    "cwi_touches_90d", "cwi_completed_rate"]
+    output_cols.extend([c for c in feature_cols if c in agg.columns])
+    
+    result = agg[output_cols].copy()
+    result = result.fillna(0)
+    
+    logger.info(f"Created CWI features for {len(result)} customers")
+    return result
+
+
 def create_door_pressure_features(
     shipments_df: pd.DataFrame,
     door_pressure_df: pd.DataFrame,
