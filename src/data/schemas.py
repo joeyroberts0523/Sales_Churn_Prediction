@@ -259,6 +259,12 @@ FEATURES_SCHEMA = TableSchema(
         ColumnDef("cwi_touches_90d", "INT", True, "Total inspection touches in 90 days"),
         ColumnDef("cwi_completed_rate", "DECIMAL(6,4)", True, "% of inspections completed"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+        # NTD Lane Market Share Features
+        ColumnDef("ntd_lane_share", "DECIMAL(6,4)", True, "Customer's share of volume on primary lanes (NTD)"),
+        ColumnDef("ntd_lane_rank", "INT", True, "Customer's rank by volume on lane (NTD)"),
+        ColumnDef("ntd_lane_total_volume", "INT", True, "Total market volume on lane (NTD)"),
+        ColumnDef("ntd_lane_customer_volume", "INT", True, "Customer's volume on lane (NTD)"),
+        ColumnDef("ntd_lane_competitor_count", "INT", True, "Number of competitors on lane (NTD)"),
     ]
 )
 
@@ -386,159 +392,22 @@ POLICY_COHORTS_SCHEMA = TableSchema(
     ]
 )
 
-
-# =============================================================================
-# Source Tables - TransitReview and Pickups
-# =============================================================================
-
-TRANSIT_REVIEW_SCHEMA = TableSchema(
-    name="transit_review",
-    description="Transit performance data from TransitReview_V03 - on-time/late deliveries",
-    source_system="TransitReview_V03",
-    primary_key=["transit_id"],
-    business_key=["pro"],
+NTD_LANE_SCHEMA = TableSchema(
+    name="ntd_lane",
+    description="NTD lane-level market share and volume data (vwCarSTtoST, vwIndSTtoST, nationaldata)",
+    source_system="NTD Delta Tables",
+    primary_key=["origin_state", "dest_state", "carrier_code"],
     columns=[
-        ColumnDef("transit_id", "STRING", False, "Unique record identifier (UUID)"),
-        ColumnDef("pro", "STRING", False, "PRO number"),
-        ColumnDef("pro_sfx", "STRING", True, "PRO suffix"),
-        ColumnDef("ori_id", "STRING", True, "Origin service center ID"),
-        ColumnDef("dst_id", "STRING", True, "Destination service center ID"),
-        ColumnDef("ori_zip", "STRING", True, "Origin ZIP code"),
-        ColumnDef("dst_zip", "STRING", True, "Destination ZIP code"),
-        ColumnDef("pu_date", "DATE", True, "Pickup date"),
-        ColumnDef("dlv_date", "DATE", True, "Actual delivery date"),
-        ColumnDef("dlv_date_adj", "DATE", True, "Delivery date adjusted for weekends"),
-        ColumnDef("original_edd", "DATE", True, "Original estimated delivery date"),
-        ColumnDef("est_delivery_date", "DATE", True, "Estimated delivery date"),
-        ColumnDef("anticipated_delvy_date", "DATE", True, "Anticipated delivery date"),
-        ColumnDef("apt_date", "DATE", True, "Appointment date if set"),
-        ColumnDef("agreement_number", "STRING", True, "Agreement number"),
-        ColumnDef("shipper_code", "STRING", True, "Shipper code"),
-        ColumnDef("consignee_code", "STRING", True, "Consignee code"),
-        ColumnDef("from_carrier", "STRING", True, "Interline from carrier (empty if direct)"),
-        ColumnDef("to_carrier", "STRING", True, "Interline to carrier (empty if direct)"),
-        ColumnDef("std_trans_days", "INT", True, "Standard transit days"),
-        ColumnDef("added_days", "INT", True, "Added days"),
-        ColumnDef("carrier_added_days", "INT", True, "Carrier added days"),
-        ColumnDef("service_days", "INT", True, "Service days"),
-        ColumnDef("transit_days_overrun", "INT", True, "Days over standard transit"),
-        ColumnDef("sign_for_overunder", "INT", True, "Sign for over/under"),
-        ColumnDef("number_of_bring_backs", "INT", True, "Number of bring-back attempts"),
-        ColumnDef("hazardous_material_flag", "STRING", True, "Hazmat flag"),
-        ColumnDef("returned_flag", "STRING", True, "Returned shipment flag"),
-        ColumnDef("transit_time_code", "STRING", True, "Service codes"),
-        ColumnDef("all_short", "STRING", True, "All short flag"),
-        ColumnDef("misroute", "STRING", True, "Misroute flag"),
-        ColumnDef("late_departure_lh", "STRING", True, "Late departure linehaul"),
-        ColumnDef("late_arrival_lh", "STRING", True, "Late arrival linehaul"),
-        ColumnDef("transit_failure_type", "STRING", True, "Dispatch transit failure codes"),
-        ColumnDef("customerid", "STRING", True, "Customer ID"),
-        # Calculated fields
-        ColumnDef("is_intra", "BOOLEAN", True, "Intra-terminal (ORI=DST)"),
-        ColumnDef("is_intl", "BOOLEAN", True, "International (has carrier)"),
-        ColumnDef("on_time_direct", "BOOLEAN", True, "On-time direct shipment"),
-        ColumnDef("late_sql_direct", "BOOLEAN", True, "Late direct shipment"),
-        ColumnDef("days_late", "INT", True, "Days late (0 if on-time)"),
-        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
-    ]
-)
-
-PICKUPS_SCHEMA = TableSchema(
-    name="pickups",
-    description="Pickup requests from FMP030 - completed, missed, cancelled, not ready",
-    source_system="FMP030",
-    primary_key=["pickup_id"],
-    business_key=["pu_request_number"],
-    columns=[
-        ColumnDef("pickup_id", "STRING", False, "Unique record identifier (UUID)"),
-        ColumnDef("pu_request_number", "STRING", False, "Pickup request number"),
-        ColumnDef("service_center", "STRING", True, "Pickup terminal (PKU_TERMINAL)"),
-        ColumnDef("pku_region", "STRING", True, "Pickup region"),
-        ColumnDef("pku_route", "STRING", True, "Pickup route name"),
-        ColumnDef("status_flag", "STRING", True, "PKU (completed) or CAN (cancelled)"),
-        ColumnDef("attempted", "STRING", True, "Y if attempted pickup"),
-        ColumnDef("rescheduled", "STRING", True, "Rescheduled flag"),
-        ColumnDef("shipper_code", "STRING", True, "Shipper number"),
-        ColumnDef("shipper_name", "STRING", True, "Shipper name"),
-        ColumnDef("shipper_city", "STRING", True, "Shipper city"),
-        ColumnDef("shipper_state", "STRING", True, "Shipper state"),
-        ColumnDef("shipper_zip", "STRING", True, "Shipper ZIP code"),
-        ColumnDef("country", "STRING", True, "Country (US or Canada based on ZIP)"),
-        ColumnDef("req_pku_date", "DATE", True, "Requested pickup date"),
-        ColumnDef("driver_eid", "STRING", True, "Driver EID"),
-        ColumnDef("cancel_reason", "STRING", True, "Cancel reason (Missed/Not Ready/No Freight/etc)"),
-        ColumnDef("puhcantyp", "STRING", True, "Cancel type code (M/C/A/R/O)"),
-        ColumnDef("cancel_count", "INT", True, "1 if cancelled, 0 if completed"),
-        ColumnDef("comp_count", "INT", True, "1 if completed, 0 if cancelled"),
-        ColumnDef("stops", "INT", True, "Number of stops"),
-        ColumnDef("puh_create_type", "STRING", True, "Create type"),
-        ColumnDef("entered_date", "DATE", True, "Entered date"),
-        ColumnDef("entered_time", "TIME", True, "Entered time"),
-        ColumnDef("sent_date", "DATE", True, "Sent to driver date"),
-        ColumnDef("sent_time", "TIME", True, "Sent to driver time"),
-        ColumnDef("cancel_date", "DATE", True, "Cancellation date"),
-        ColumnDef("cancel_time", "TIME", True, "Cancellation time"),
-        ColumnDef("pu_date", "DATE", True, "Actual pickup date"),
-        ColumnDef("pu_time", "TIME", True, "Actual pickup time"),
-        ColumnDef("close_date", "DATE", True, "Close date"),
-        ColumnDef("close_time", "TIME", True, "Close time"),
-        ColumnDef("cancel_comments", "STRING", True, "Cancel comments"),
-        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
-    ]
-)
-
-DOOR_PRESSURE_SCHEMA = TableSchema(
-    name="door_pressure",
-    description="Service center door pressure (load planning) - dock door utilization metrics",
-    source_system="PlanDoorPressure",
-    primary_key=["pressure_id"],
-    columns=[
-        ColumnDef("pressure_id", "STRING", False, "Unique record identifier (UUID)"),
-        ColumnDef("service_center", "STRING", False, "Service center code (RT)"),
-        ColumnDef("flow_type", "STRING", True, "O/B (Outbound), I/B (Inbound), THROUGH"),
-        ColumnDef("flow_type_order", "INT", True, "Sort order: 1=O/B, 2=I/B, 3=THROUGH"),
-        ColumnDef("lp_date", "DATE", True, "Load plan date"),
-        ColumnDef("ships", "DECIMAL(10,2)", True, "Shipment count (adjusted for through freight)"),
-        ColumnDef("refresh_date", "TIMESTAMP", True, "Data refresh timestamp"),
-        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
-    ]
-)
-
-DOOR_PARKING_COUNT_SCHEMA = TableSchema(
-    name="door_parking_count",
-    description="Service center door capacity reference table",
-    source_system="Reference",
-    primary_key=["service_center"],
-    columns=[
-        ColumnDef("service_center", "STRING", False, "Service center code"),
-        ColumnDef("door_count", "INT", False, "Number of dock doors at terminal"),
-        ColumnDef("effective_date", "DATE", True, "Effective date for door count"),
-        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
-    ]
-)
-
-CWI_COMPLIANCE_SCHEMA = TableSchema(
-    name="cwi_compliance",
-    description="Catch Weight Inspection compliance - reweigh/reclassification inspection events",
-    source_system="CWIReporting.dbo.CWI_Compliance",
-    primary_key=["pro_key"],
-    columns=[
-        ColumnDef("pro", "STRING", False, "Alpha PRO number"),
-        ColumnDef("pro_suffix", "STRING", True, "PRO suffix (blank or MR)"),
-        ColumnDef("pro_key", "STRING", False, "PRO-Suffix key"),
-        ColumnDef("pickup_date", "DATE", True, "Pickup date"),
-        ColumnDef("delivery_date", "DATE", True, "Delivery date"),
-        ColumnDef("target_type", "STRING", True, "D=Delivery, W=Weight inspection target"),
-        ColumnDef("pl_term", "STRING", True, "Terminal where inspection occurred"),
-        ColumnDef("pl_emp_id", "STRING", True, "Employee ID who performed inspection"),
-        ColumnDef("pl_touches", "INT", True, "Number of inspection touches"),
-        ColumnDef("selected", "INT", True, "1=Selected for inspection (event capable)"),
-        ColumnDef("flagged", "INT", True, "1=Flagged for weight/class discrepancy"),
-        ColumnDef("event", "INT", True, "1=Inspection event occurred"),
-        ColumnDef("ignore", "INT", True, "1=Ignored (IG event or reasonableness check)"),
-        ColumnDef("event_complete", "INT", True, "1=Inspection event completed"),
-        ColumnDef("additional_event", "INT", True, "1=Unselected PRO with event (extra inspection)"),
-        ColumnDef("customer_code", "STRING", True, "FK to customers (derived from PRO)"),
+        ColumnDef("origin_state", "STRING", False, "Origin state code (OState)"),
+        ColumnDef("dest_state", "STRING", False, "Destination state code (DState)"),
+        ColumnDef("carrier_code", "STRING", False, "Carrier SCAC or code"),
+        ColumnDef("customer_code", "STRING", True, "Customer code (if available)"),
+        ColumnDef("volume", "INT", True, "Shipment count or volume for carrier on lane"),
+        ColumnDef("total_volume", "INT", True, "Total market volume on lane (all carriers)"),
+        ColumnDef("market_share", "DECIMAL(6,4)", True, "Carrier's share of lane volume"),
+        ColumnDef("rank", "INT", True, "Carrier's rank by volume on lane"),
+        ColumnDef("competitor_count", "INT", True, "Number of carriers with volume on lane"),
+        ColumnDef("period", "STRING", True, "Reporting period (e.g., 2026-01)"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
     ]
 )
@@ -569,6 +438,7 @@ ALL_SCHEMAS: Dict[str, TableSchema] = {
     "feature_importance": FEATURE_IMPORTANCE_SCHEMA,
     "policies": POLICIES_SCHEMA,
     "policy_cohorts": POLICY_COHORTS_SCHEMA,
+    "ntd_lane": NTD_LANE_SCHEMA,
 }
 
 

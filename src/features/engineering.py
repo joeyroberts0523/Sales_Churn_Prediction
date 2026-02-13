@@ -1128,6 +1128,59 @@ def create_door_pressure_features(
     return df
 
 
+def create_ntd_lane_features(
+    ntd_lane_df: pd.DataFrame,
+    customer_codes: Optional[List[str]] = None,
+    reference_date: Optional[datetime] = None
+) -> pd.DataFrame:
+    """
+    Create NTD lane market share features for each customer.
+
+    Features:
+    - ntd_lane_share: Customer's share of volume on primary lanes
+    - ntd_lane_rank: Customer's rank by volume on lane
+    - ntd_lane_total_volume: Total market volume on lane
+    - ntd_lane_customer_volume: Customer's volume on lane
+    - ntd_lane_competitor_count: Number of competitors on lane
+
+    Args:
+        ntd_lane_df: NTD lane-level data (vwCarSTtoST, vwIndSTtoST, nationaldata)
+        customer_codes: Optional list of customer codes
+        reference_date: Optional reference date for filtering
+    Returns:
+        DataFrame with customer_code and NTD lane features
+    """
+    if reference_date is None:
+        reference_date = datetime.now()
+    # Optionally filter by period if present
+    if "period" in ntd_lane_df.columns:
+        # Use most recent period
+        latest_period = ntd_lane_df["period"].max()
+        ntd_lane_df = ntd_lane_df[ntd_lane_df["period"] == latest_period]
+    if customer_codes is not None and "customer_code" in ntd_lane_df.columns:
+        ntd_lane_df = ntd_lane_df[ntd_lane_df["customer_code"].isin(customer_codes)]
+    if "customer_code" not in ntd_lane_df.columns or len(ntd_lane_df) == 0:
+        return pd.DataFrame(columns=["customer_code"])
+    # Aggregate by customer (across all lanes)
+    agg = ntd_lane_df.groupby("customer_code").agg({
+        "market_share": "mean",
+        "rank": "min",
+        "total_volume": "sum",
+        "volume": "sum",
+        "competitor_count": "mean"
+    }).reset_index()
+    agg = agg.rename(columns={
+        "market_share": "ntd_lane_share",
+        "rank": "ntd_lane_rank",
+        "total_volume": "ntd_lane_total_volume",
+        "volume": "ntd_lane_customer_volume",
+        "competitor_count": "ntd_lane_competitor_count"
+    })
+    agg = agg.fillna(0)
+    logger.info(f"Created NTD lane features for {len(agg)} customers")
+    return agg
+
+
 def create_all_features(
     customers_df: pd.DataFrame,
     shipments_df: pd.DataFrame,
