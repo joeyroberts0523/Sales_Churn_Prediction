@@ -369,6 +369,107 @@ POLICY_COHORTS_SCHEMA = TableSchema(
 
 
 # =============================================================================
+# Source Tables - TransitReview and Pickups
+# =============================================================================
+
+TRANSIT_REVIEW_SCHEMA = TableSchema(
+    name="transit_review",
+    description="Transit performance data from TransitReview_V03 - on-time/late deliveries",
+    source_system="TransitReview_V03",
+    primary_key=["transit_id"],
+    business_key=["pro"],
+    columns=[
+        ColumnDef("transit_id", "STRING", False, "Unique record identifier (UUID)"),
+        ColumnDef("pro", "STRING", False, "PRO number"),
+        ColumnDef("pro_sfx", "STRING", True, "PRO suffix"),
+        ColumnDef("ori_id", "STRING", True, "Origin service center ID"),
+        ColumnDef("dst_id", "STRING", True, "Destination service center ID"),
+        ColumnDef("ori_zip", "STRING", True, "Origin ZIP code"),
+        ColumnDef("dst_zip", "STRING", True, "Destination ZIP code"),
+        ColumnDef("pu_date", "DATE", True, "Pickup date"),
+        ColumnDef("dlv_date", "DATE", True, "Actual delivery date"),
+        ColumnDef("dlv_date_adj", "DATE", True, "Delivery date adjusted for weekends"),
+        ColumnDef("original_edd", "DATE", True, "Original estimated delivery date"),
+        ColumnDef("est_delivery_date", "DATE", True, "Estimated delivery date"),
+        ColumnDef("anticipated_delvy_date", "DATE", True, "Anticipated delivery date"),
+        ColumnDef("apt_date", "DATE", True, "Appointment date if set"),
+        ColumnDef("agreement_number", "STRING", True, "Agreement number"),
+        ColumnDef("shipper_code", "STRING", True, "Shipper code"),
+        ColumnDef("consignee_code", "STRING", True, "Consignee code"),
+        ColumnDef("from_carrier", "STRING", True, "Interline from carrier (empty if direct)"),
+        ColumnDef("to_carrier", "STRING", True, "Interline to carrier (empty if direct)"),
+        ColumnDef("std_trans_days", "INT", True, "Standard transit days"),
+        ColumnDef("added_days", "INT", True, "Added days"),
+        ColumnDef("carrier_added_days", "INT", True, "Carrier added days"),
+        ColumnDef("service_days", "INT", True, "Service days"),
+        ColumnDef("transit_days_overrun", "INT", True, "Days over standard transit"),
+        ColumnDef("sign_for_overunder", "INT", True, "Sign for over/under"),
+        ColumnDef("number_of_bring_backs", "INT", True, "Number of bring-back attempts"),
+        ColumnDef("hazardous_material_flag", "STRING", True, "Hazmat flag"),
+        ColumnDef("returned_flag", "STRING", True, "Returned shipment flag"),
+        ColumnDef("transit_time_code", "STRING", True, "Service codes"),
+        ColumnDef("all_short", "STRING", True, "All short flag"),
+        ColumnDef("misroute", "STRING", True, "Misroute flag"),
+        ColumnDef("late_departure_lh", "STRING", True, "Late departure linehaul"),
+        ColumnDef("late_arrival_lh", "STRING", True, "Late arrival linehaul"),
+        ColumnDef("transit_failure_type", "STRING", True, "Dispatch transit failure codes"),
+        ColumnDef("customerid", "STRING", True, "Customer ID"),
+        # Calculated fields
+        ColumnDef("is_intra", "BOOLEAN", True, "Intra-terminal (ORI=DST)"),
+        ColumnDef("is_intl", "BOOLEAN", True, "International (has carrier)"),
+        ColumnDef("on_time_direct", "BOOLEAN", True, "On-time direct shipment"),
+        ColumnDef("late_sql_direct", "BOOLEAN", True, "Late direct shipment"),
+        ColumnDef("days_late", "INT", True, "Days late (0 if on-time)"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
+PICKUPS_SCHEMA = TableSchema(
+    name="pickups",
+    description="Pickup requests from FMP030 - completed, missed, cancelled, not ready",
+    source_system="FMP030",
+    primary_key=["pickup_id"],
+    business_key=["pu_request_number"],
+    columns=[
+        ColumnDef("pickup_id", "STRING", False, "Unique record identifier (UUID)"),
+        ColumnDef("pu_request_number", "STRING", False, "Pickup request number"),
+        ColumnDef("service_center", "STRING", True, "Pickup terminal (PKU_TERMINAL)"),
+        ColumnDef("pku_region", "STRING", True, "Pickup region"),
+        ColumnDef("pku_route", "STRING", True, "Pickup route name"),
+        ColumnDef("status_flag", "STRING", True, "PKU (completed) or CAN (cancelled)"),
+        ColumnDef("attempted", "STRING", True, "Y if attempted pickup"),
+        ColumnDef("rescheduled", "STRING", True, "Rescheduled flag"),
+        ColumnDef("shipper_code", "STRING", True, "Shipper number"),
+        ColumnDef("shipper_name", "STRING", True, "Shipper name"),
+        ColumnDef("shipper_city", "STRING", True, "Shipper city"),
+        ColumnDef("shipper_state", "STRING", True, "Shipper state"),
+        ColumnDef("shipper_zip", "STRING", True, "Shipper ZIP code"),
+        ColumnDef("country", "STRING", True, "Country (US or Canada based on ZIP)"),
+        ColumnDef("req_pku_date", "DATE", True, "Requested pickup date"),
+        ColumnDef("driver_eid", "STRING", True, "Driver EID"),
+        ColumnDef("cancel_reason", "STRING", True, "Cancel reason (Missed/Not Ready/No Freight/etc)"),
+        ColumnDef("puhcantyp", "STRING", True, "Cancel type code (M/C/A/R/O)"),
+        ColumnDef("cancel_count", "INT", True, "1 if cancelled, 0 if completed"),
+        ColumnDef("comp_count", "INT", True, "1 if completed, 0 if cancelled"),
+        ColumnDef("stops", "INT", True, "Number of stops"),
+        ColumnDef("puh_create_type", "STRING", True, "Create type"),
+        ColumnDef("entered_date", "DATE", True, "Entered date"),
+        ColumnDef("entered_time", "TIME", True, "Entered time"),
+        ColumnDef("sent_date", "DATE", True, "Sent to driver date"),
+        ColumnDef("sent_time", "TIME", True, "Sent to driver time"),
+        ColumnDef("cancel_date", "DATE", True, "Cancellation date"),
+        ColumnDef("cancel_time", "TIME", True, "Cancellation time"),
+        ColumnDef("pu_date", "DATE", True, "Actual pickup date"),
+        ColumnDef("pu_time", "TIME", True, "Actual pickup time"),
+        ColumnDef("close_date", "DATE", True, "Close date"),
+        ColumnDef("close_time", "TIME", True, "Close time"),
+        ColumnDef("cancel_comments", "STRING", True, "Cancel comments"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
+
+# =============================================================================
 # Schema Registry
 # =============================================================================
 
@@ -379,6 +480,8 @@ ALL_SCHEMAS: Dict[str, TableSchema] = {
     "consignees": CONSIGNEES_SCHEMA,
     "shipments": SHIPMENTS_SCHEMA,
     "operations_events": OPERATIONS_EVENTS_SCHEMA,
+    "transit_review": TRANSIT_REVIEW_SCHEMA,
+    "pickups": PICKUPS_SCHEMA,
     "claims": CLAIMS_SCHEMA,
     "customer_revenue": CUSTOMER_REVENUE_SCHEMA,
     "features": FEATURES_SCHEMA,
@@ -497,6 +600,91 @@ CLAIMS_COLUMN_MAP = {
     "claim_type": "Type Claim",
 }
 
+# TransitReview_V03 column mapping
+TRANSIT_REVIEW_COLUMN_MAP = {
+    "pro": "PRO",
+    "pro_sfx": "PRO_SFX",
+    "ori_id": "Ori ID",
+    "dst_id": "Dst ID",
+    "ori_zip": "ORI ZIP",
+    "dst_zip": "DST ZIP",
+    "pu_date": "PU DATE",
+    "dlv_date": "DLV DATE",
+    "dlv_date_adj": "DLV Date Adj",
+    "original_edd": "ORIGINAL EDD",
+    "est_delivery_date": "EST DELIVERY DATE",
+    "anticipated_delvy_date": "ANTICIPATED DELVY DATE",
+    "apt_date": "APT DATE",
+    "agreement_number": "AGREEMENT NUMBER",
+    "shipper_code": "SHIPPER CODE",
+    "consignee_code": "CONSIGNEE CODE",
+    "from_carrier": "FROM CARRIER",
+    "to_carrier": "TO CARRIER",
+    "std_trans_days": "STD TRANS DAYS",
+    "added_days": "Added Days",
+    "carrier_added_days": "CARRIER ADDED DAYS",
+    "service_days": "SERVICE DAYS",
+    "transit_days_overrun": "TRANSIT DAYS OVERRUN",
+    "sign_for_overunder": "SIGN FOR OVERUNDER",
+    "number_of_bring_backs": "NUMBER OF BRING BACKS",
+    "hazardous_material_flag": "HAZARDOUS MATERIAL FLAG",
+    "returned_flag": "RETURNED FLAG",
+    "transit_time_code": "Service Codes",
+    "all_short": "ALL SHORT",
+    "misroute": "MISROUTE",
+    "late_departure_lh": "Late Departure - LH",
+    "late_arrival_lh": "Late Arrival - LH",
+    "transit_failure_type": "Dispatch Transit Failure Codes",
+    "customerid": "CUSTOMERID",
+    "on_time_direct": "On Time - Direct",
+    "late_sql_direct": "Late SQL - Direct",
+}
+
+# FMP030 Pickup column mapping
+PICKUPS_COLUMN_MAP = {
+    "service_center": "Service Center",
+    "pku_region": "PKU Region",
+    "pku_route": "PKU Route",
+    "status_flag": "PKU Status Flag",
+    "attempted": "PKU Attempted",
+    "rescheduled": "PKU Rescheduled",
+    "shipper_code": "Shipper Code",
+    "shipper_name": "Shipper Name",
+    "shipper_city": "Shipper City",
+    "shipper_state": "Shipper State",
+    "shipper_zip": "Shipper Zip Code",
+    "country": "Country",
+    "req_pku_date": "Req PKU Date",
+    "driver_eid": "Driver EID",
+    "cancel_reason": "Cancel Reason",
+    "puhcantyp": "PUHCANTYP",
+    "cancel_count": "CANCEL_COUNT",
+    "comp_count": "COMP_COUNT",
+    "stops": "Stops",
+    "pu_request_number": "PU_REQUEST_NUMBER",
+    "puh_create_type": "PUH_CREATE_TYPE",
+    "entered_date": "ENTERED_DATE",
+    "entered_time": "ENTERED_TIME",
+    "sent_date": "SENT_DATE",
+    "sent_time": "SENT_TIME",
+    "cancel_date": "CANCEL_DATE",
+    "cancel_time": "CANCEL_TIME",
+    "pu_date": "PU_DATE",
+    "pu_time": "PU_TIME",
+    "close_date": "CLOSE_DATE",
+    "close_time": "CLOSE_TIME",
+    "cancel_comments": "Cancel Comment",
+}
+
+# Cancel reason code mapping for pickups
+PICKUP_CANCEL_CODES = {
+    "M": "Missed",          # Carrier fault - driver missed pickup
+    "C": "Not Ready",       # Customer fault - freight not ready
+    "A": "No Freight",      # Customer fault - no freight to pickup
+    "R": "Duplicate",       # Exclude from metrics
+    "O": "Other",           # Review case-by-case
+}
+
 
 def get_source_column_map(source_system: str) -> Dict[str, str]:
     """Get column mapping for a source system."""
@@ -504,5 +692,12 @@ def get_source_column_map(source_system: str) -> Dict[str, str]:
         "FRP001": FRP001_COLUMN_MAP,
         "TOP006": TOP006_COLUMN_MAP,
         "Claims Data": CLAIMS_COLUMN_MAP,
+        "TransitReview_V03": TRANSIT_REVIEW_COLUMN_MAP,
+        "FMP030": PICKUPS_COLUMN_MAP,
     }
     return maps.get(source_system, {})
+
+
+def get_cancel_reason_text(code: str) -> str:
+    """Convert pickup cancel type code to readable text."""
+    return PICKUP_CANCEL_CODES.get(code, "Unknown")

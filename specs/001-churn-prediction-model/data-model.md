@@ -40,10 +40,12 @@ This data model supports churn prediction for LTL (Less-than-Truckload) freight 
 | Lakehouse Table | Source System | Key Fields |
 |-----------------|---------------|------------|
 | shipments | FRP001 | alpha_pro, agreement_number |
+| transit_review | TransitReview_V03 | PRO, agreement_number |
+| pickups | FMP030 (Pickup Header) | PU_REQUEST_NUMBER, shipper_number |
 | customers | TOP006 | customer_code |
 | customer_revenue | TOP006 | customer_code, period |
 | claims | Claims Data | claim_id, pro |
-| operations_events | Transformed from multiple tables | alpha_pro |
+| operations_events | Transformed from transit_review + pickups | alpha_pro |
 | shippers | Reference/Master Data | shipper_code |
 | consignees | Reference/Master Data | consignee_code |
 
@@ -193,17 +195,130 @@ This data model supports churn prediction for LTL (Less-than-Truckload) freight 
 **Foreign Keys**: alpha_pro → shipments.alpha_pro
 
 **Transformation Logic**:
-```python
-# Example transformation from raw operational tables
-is_missed_pickup = pickup_status IN ('MISSED', 'NO_SHOW', 'DRIVER_UNAVAILABLE')
-is_late_delivery = actual_delivery_date > scheduled_delivery_date
-days_late = DATEDIFF(actual_delivery_date, scheduled_delivery_date) WHERE > 0 ELSE 0
-is_cancelled_pickup = pickup_status IN ('CANCELLED', 'CANCELLED_BY_CUSTOMER')
+```sql
+-- On-Time/Late from TransitReview_V03 (direct shipments only)
+PROMISE_DATE = COALESCE(APT_DATE, EST_DELIVERY_DATE)
+IS_LATE = DLV_DATE > PROMISE_DATE AND FROM_CARRIER = '' AND TO_CARRIER = ''
+DAYS_LATE = DATEDIFF(DLV_DATE, PROMISE_DATE) WHERE POSITIVE, ELSE 0
+
+-- From Pickup (FMP030)
+-- PUHCANTYP codes:
+--   'M' = Missed
+--   'C' = Not Ready  
+--   'A' = No Freight / Attempted
+--   'R' = Duplicate
+--   'O' = Other
+IS_MISSED_PICKUP = PUHCANTYP = 'M'
+IS_CANCELLED_PICKUP = CANCEL_COUNT = 1 AND PUHCANTYP NOT IN ('M', 'R')  -- excludes duplicates
+CANCEL_REASON = CASE PUHCANTYP:
+    'M' -> 'Missed'
+    'C' -> 'Not Ready'
+    'A' -> 'No Freight'
+    'R' -> 'Duplicate'
+    'O' -> 'Other'
 ```
 
 ---
 
-### 7. claims
+### 7. transit_review
+
+**Source**: TransitReview_V03 view  
+**Grain**: One row per PRO + leg (filtered to relevant leg)  
+**Purpose**: Transit performance metrics - on-time, late, days overrun
+
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| pro | STRING | PRO number | TransitReview.PRO |
+| pro_sfx | STRING | PRO suffix | TransitReview.PRO_SFX |
+| ori_id | STRING | Origin service center | TransitReview.ORI |
+| dst_id | STRING | Destination service center | TransitReview.DST |
+| ori_zip | STRING | Origin ZIP | TransitReview.ORI_ZIP |
+| dst_zip | STRING | Destination ZIP | TransitReview.DST_ZIP |
+| pu_date | DATE | Pickup date | TransitReview.PU_DATE |
+| dlv_date | DATE | Actual delivery date | TransitReview.DLV_DATE |
+| original_edd | DATE | Original estimated delivery | TransitReview.ORIGINAL_EDD |
+| est_delivery_date | DATE | Estimated delivery date | TransitReview.EST_DELIVERY_DATE |
+| apt_date | DATE | Appointment date (if set) | TransitReview.APT_DATE |
+| agreement_number | STRING | Agreement number | TransitReview.AGREEMENT_NUMBER |
+| shipper_code | STRING | Shipper code | TransitReview.SHIPPER_CODE |
+| consignee_code | STRING | Consignee code | TransitReview.CONSIGNEE_CODE |
+| from_carrier | STRING | Interline from carrier | TransitReview.FROM_CARRIER |
+| to_carrier | STRING | Interline to carrier | TransitReview.TO_CARRIER |
+| std_trans_days | INTEGER | Standard transit days | TransitReview.STD_TRANS_DAYS |
+| added_days | INTEGER | Added days | TransitReview.ADDED_DAYS |
+| service_days | INTEGER | Service days | TransitReview.SERVICE_DAYS |
+| transit_days_overrun | INTEGER | Days over standard transit | TransitReview.TRANSIT_DAYS_OVERRUN |
+| number_of_bring_backs | INTEGER | Bring-back attempts | TransitReview.NUMBER_OF_BRING_BACKS |
+| transit_failure_type | STRING | Failure type code | TransitReview.TRANSIT_FAILURE_TYPE |
+| on_time_direct | BOOLEAN | On-time (direct only) | Calculated: see below |
+| late_sql_direct | BOOLEAN | Late (direct only) | Calculated: see below |
+| is_intra | BOOLEAN | Intra-terminal (ORI=DST) | Calculated |
+| is_intl | BOOLEAN | International shipment | Calculated |
+
+**Calculated Fields**:
+```sql
+PROMISE_DATE = COALESCE(APT_DATE, EST_DELIVERY_DATE)
+ON_TIME_DIRECT = FROM_CARRIER = '' AND TO_CARRIER = '' AND PROMISE_DATE >= DLV_DATE
+LATE_SQL_DIRECT = FROM_CARRIER = '' AND TO_CARRIER = '' AND DLV_DATE > PROMISE_DATE
+IS_INTRA = ORI = DST
+IS_INTL = FROM_CARRIER <> '' OR TO_CARRIER <> ''
+```
+
+**Primary Key**: (pro, leg_sequence) - or use row ID  
+**Business Key**: pro  
+
+---
+
+### 8. pickups
+
+**Source**: FMP030 (Pickup Header) via openquery  
+**Grain**: One row per pickup request  
+**Purpose**: Pickup request outcomes - completed, missed, cancelled, not ready
+
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| pu_request_number | STRING | Pickup request ID (PK) | FMP030.PUH_PU_REQUEST_NUMBER |
+| service_center | STRING | Pickup terminal | FMP030.PKU_TERMINAL |
+| pku_region | STRING | Region | FMP030.PKU_REGION |
+| pku_route | STRING | Pickup route | FMP030.PKU_ROUTE_NAME |
+| status_flag | STRING | PKU or CAN | FMP030.PUH_STATUS |
+| attempted | STRING | 'Y' if attempted | Derived from PUHCANTYP='A' |
+| rescheduled | STRING | Rescheduled flag | FMP030.PUH_RESCHEDUL_FLAG |
+| shipper_code | STRING | Shipper number | FMP030.PUH_SHIPPER_NUMBER |
+| shipper_name | STRING | Shipper name | FMP030.PUH_SHIPPER_NAME |
+| shipper_city | STRING | City | FMP030.PUH_SHIPPER_CITY |
+| shipper_state | STRING | State | FMP030.PUH_SHIPPER_STATE |
+| shipper_zip | STRING | ZIP code | FMP030.PUH_SHIPPER_ZIPCODE |
+| req_pku_date | DATE | Requested pickup date | FMP030.PUH_APPOINTMENT_DATE |
+| driver_eid | STRING | Driver ID | FMP030.PUH_PICKUP_DRVR |
+| cancel_reason | STRING | Cancel reason text | Derived - see codes |
+| puhcantyp | STRING | Cancel type code (M/C/A/R/O) | FMP030.PUHCANTYP |
+| cancel_count | INTEGER | 1 if cancelled, 0 if completed | Calculated |
+| comp_count | INTEGER | 1 if completed, 0 if cancelled | Calculated |
+| cancel_date | DATE | Cancellation date | FMP030.PUH_CANCEL_DATE |
+| cancel_time | TIME | Cancellation time | FMP030.PUH_CANCEL_TIME |
+| cancel_comments | STRING | Cancel comments | FMP030.PUH_CANCEL_REASON |
+| pu_date | DATE | Actual pickup date | FMP030.PUH_PICKUP_DATE |
+| pu_time | TIME | Actual pickup time | FMP030.PUH_PICKUP_TIME |
+
+**Cancel Reason Codes (PUHCANTYP)**:
+| Code | Meaning | Category |
+|------|---------|----------|
+| M | Missed | Not Completed - Carrier Fault |
+| C | Not Ready | Not Completed - Customer Fault |
+| A | No Freight | Not Completed - Customer Fault |
+| R | Duplicate | Exclude from metrics |
+| O | Other | Review case-by-case |
+| STATUS='PKU' | Completed Pickup | Completed |
+| DRIVER CANCEL | Driver cancelled | Not Completed - Carrier Fault |
+| TIME EXPIRED | Timed out | Not Completed - System |
+
+**Primary Key**: pu_request_number  
+**Business Key**: (shipper_code, req_pku_date)  
+
+---
+
+### 9. claims
 
 **Source**: Claims Data table  
 **Grain**: One row per claim  
