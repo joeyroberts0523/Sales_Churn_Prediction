@@ -451,6 +451,9 @@ Higher pressure indicates a more congested terminal, potentially correlating wit
 | missed_pickup_rate | DECIMAL(6,4) | % of shipments with missed pickup |
 | late_delivery_rate | DECIMAL(6,4) | % of shipments delivered late |
 | on_time_delivery_rate | DECIMAL(6,4) | % of shipments on-time |
+| **Interline Features** | | |
+| interline_count_90d | INTEGER | Interline shipments in 90 days |
+| interline_pct | DECIMAL(6,4) | % of shipments that are interline |
 | **Claims Features** | | |
 | claim_count_90d | INTEGER | Claims in last 90 days |
 | claim_count_365d | INTEGER | Claims in last year |
@@ -471,6 +474,11 @@ Higher pressure indicates a more congested terminal, potentially correlating wit
 | distinct_shippers | INTEGER | Number of unique shippers |
 | distinct_consignees | INTEGER | Number of unique consignees |
 | top_lane_concentration | DECIMAL(6,4) | % volume in top shipper-consignee lane |
+| **Lane Abandonment Features** | | |
+| lanes_abandoned_90d | INTEGER | Lanes with shipments 90-180d ago but 0 in last 90d |
+| lanes_abandoned_pct | DECIMAL(6,4) | % of historical lanes that were abandoned |
+| new_lanes_90d | INTEGER | New lanes started in last 90 days |
+| lane_churn_rate | DECIMAL(6,4) | Net lane change rate: (new - abandoned) / total historical |
 | created_at | TIMESTAMP | Record creation timestamp |
 
 **Primary Key**: feature_id

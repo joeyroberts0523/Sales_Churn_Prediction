@@ -224,6 +224,9 @@ FEATURES_SCHEMA = TableSchema(
         ColumnDef("missed_pickup_rate", "DECIMAL(6,4)", True, "% of shipments with missed pickup"),
         ColumnDef("late_delivery_rate", "DECIMAL(6,4)", True, "% of shipments delivered late"),
         ColumnDef("on_time_delivery_rate", "DECIMAL(6,4)", True, "% of shipments on-time"),
+        # Interline Features
+        ColumnDef("interline_count_90d", "INT", True, "Interline shipments in 90 days"),
+        ColumnDef("interline_pct", "DECIMAL(6,4)", True, "% of shipments that are interline"),
         # Claims Features
         ColumnDef("claim_count_90d", "INT", True, "Claims in last 90 days"),
         ColumnDef("claim_count_365d", "INT", True, "Claims in last year"),
@@ -244,6 +247,11 @@ FEATURES_SCHEMA = TableSchema(
         ColumnDef("distinct_shippers", "INT", True, "Number of unique shippers"),
         ColumnDef("distinct_consignees", "INT", True, "Number of unique consignees"),
         ColumnDef("top_lane_concentration", "DECIMAL(6,4)", True, "% volume in top shipper-consignee lane"),
+        # Lane Abandonment Features
+        ColumnDef("lanes_abandoned_90d", "INT", True, "Lanes active 90-180d ago with 0 recent shipments"),
+        ColumnDef("lanes_abandoned_pct", "DECIMAL(6,4)", True, "% of historical lanes abandoned"),
+        ColumnDef("new_lanes_90d", "INT", True, "New lanes started in last 90 days"),
+        ColumnDef("lane_churn_rate", "DECIMAL(6,4)", True, "Net lane change rate (new - abandoned) / total"),
         ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
     ]
 )

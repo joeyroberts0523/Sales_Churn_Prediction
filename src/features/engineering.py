@@ -197,6 +197,11 @@ def create_transit_features(
     - Late = DLV_DATE > Promise date
     - Days late = DLV_DATE - Promise date (if positive)
     
+    Interline logic:
+    - Interline = FROM_CARRIER or TO_CARRIER is not empty
+    - Direct = neither FROM_CARRIER nor TO_CARRIER
+    - Higher interline % = more handoffs = more potential service issues
+    
     Features created:
     - late_delivery_count_90d: Late deliveries in 90 days
     - on_time_count_90d: On-time deliveries in 90 days
@@ -207,6 +212,8 @@ def create_transit_features(
     - bring_back_count: Total bring-backs
     - transit_failure_count: Shipments with transit failures
     - misroute_count: Misrouted shipments
+    - interline_count_90d: Interline shipments in 90 days
+    - interline_pct: % of shipments that are interline
     
     Args:
         transit_df: Transit review data from TransitReview_V03
@@ -237,15 +244,18 @@ def create_transit_features(
         elif "shipper_code" in transit_df.columns:
             transit_df = transit_df[transit_df["shipper_code"].isin(customer_codes)]
     
-    # Calculate on-time/late for direct shipments
-    # Direct = no interline carrier (FROM_CARRIER and TO_CARRIER are empty)
+    # Calculate direct vs interline
+    # Interline = has FROM_CARRIER or TO_CARRIER (handoff to/from another carrier)
+    # Direct = no interline carrier involvement
     if "from_carrier" in transit_df.columns and "to_carrier" in transit_df.columns:
         transit_df["is_direct"] = (
             (transit_df["from_carrier"].fillna("") == "") & 
             (transit_df["to_carrier"].fillna("") == "")
         )
+        transit_df["is_interline"] = ~transit_df["is_direct"]
     else:
         transit_df["is_direct"] = True
+        transit_df["is_interline"] = False
     
     # Promise date = APT_DATE if set, else EST_DELIVERY_DATE
     transit_df["promise_date"] = transit_df["apt_date"].fillna(transit_df["est_delivery_date"])
@@ -281,6 +291,7 @@ def create_transit_features(
         "is_on_time": "sum",
         "days_late": ["sum", "mean"],
         "is_direct": "sum",  # Total direct shipments
+        "is_interline": "sum",  # Total interline shipments
     }
     
     # Add optional columns
@@ -311,6 +322,7 @@ def create_transit_features(
         "days_late_sum": "total_days_late_90d",
         "days_late_mean": "avg_days_late_90d",
         "is_direct_sum": "direct_shipment_count_90d",
+        "is_interline_sum": "interline_count_90d",
         "has_overrun_sum": "transit_overrun_count_90d",
         "number_of_bring_backs_sum": "bring_back_count_90d",
         "has_failure_sum": "transit_failure_count_90d",
@@ -323,6 +335,11 @@ def create_transit_features(
         total = agg["direct_shipment_count_90d"].replace(0, 1)
         agg["late_delivery_rate"] = agg["late_delivery_count_90d"] / total
         agg["on_time_delivery_rate"] = agg["on_time_count_90d"] / total
+    
+    # Calculate interline percentage (interline / total shipments)
+    if "interline_count_90d" in agg.columns and "direct_shipment_count_90d" in agg.columns:
+        total_shipments = agg["direct_shipment_count_90d"] + agg["interline_count_90d"]
+        agg["interline_pct"] = agg["interline_count_90d"] / total_shipments.replace(0, 1)
     
     logger.info(f"Created transit features for {len(agg)} customers")
     return agg
@@ -729,6 +746,112 @@ def create_shipper_consignee_features(
     
     logger.info(f"Created shipper/consignee features for {len(df)} customers")
     return df
+
+
+def create_lane_abandonment_features(
+    shipments_df: pd.DataFrame,
+    customer_codes: Optional[List[str]] = None,
+    reference_date: Optional[datetime] = None
+) -> pd.DataFrame:
+    """
+    Create lane abandonment/volatility features.
+    
+    Identifies lanes that were active in prior period but have no recent activity.
+    This is an early warning signal - customer may be testing competitors on specific lanes.
+    
+    Features created:
+    - lanes_abandoned_90d: Lanes with shipments 90-180d ago but 0 in last 90d
+    - lanes_abandoned_pct: % of historical lanes that were abandoned
+    - new_lanes_90d: New lanes started in last 90d (not in prior 90d)
+    - lane_churn_rate: (abandoned - new) / total historical lanes
+    
+    Args:
+        shipments_df: Shipment data (needs 180+ days of history)
+        customer_codes: List of customer codes
+        reference_date: Reference date for calculations
+        
+    Returns:
+        DataFrame with customer_code and lane abandonment features
+    """
+    if reference_date is None:
+        reference_date = datetime.now()
+    
+    # Define time windows
+    cutoff_90d = reference_date - timedelta(days=90)
+    cutoff_180d = reference_date - timedelta(days=180)
+    
+    shipments_df = shipments_df.copy()
+    if "pickup_date" not in shipments_df.columns:
+        logger.warning("No pickup_date column for lane abandonment features")
+        return pd.DataFrame(columns=["customer_code"])
+    
+    shipments_df["pickup_date"] = pd.to_datetime(shipments_df["pickup_date"], errors="coerce")
+    
+    # Filter to 180-day window
+    shipments_df = shipments_df[shipments_df["pickup_date"] >= cutoff_180d]
+    
+    if customer_codes is not None and "customer_code" in shipments_df.columns:
+        shipments_df = shipments_df[shipments_df["customer_code"].isin(customer_codes)]
+    
+    if "customer_code" not in shipments_df.columns or len(shipments_df) == 0:
+        return pd.DataFrame(columns=["customer_code"])
+    
+    # Need shipper and consignee to define lanes
+    if "shipper_code" not in shipments_df.columns or "consignee_code" not in shipments_df.columns:
+        logger.warning("No shipper/consignee columns for lane abandonment features")
+        return pd.DataFrame(columns=["customer_code"])
+    
+    # Create lane identifier
+    shipments_df["lane"] = (
+        shipments_df["shipper_code"].astype(str) + "_" + 
+        shipments_df["consignee_code"].astype(str)
+    )
+    
+    # Split into recent (last 90d) and prior (90-180d)
+    recent = shipments_df[shipments_df["pickup_date"] >= cutoff_90d]
+    prior = shipments_df[(shipments_df["pickup_date"] >= cutoff_180d) & 
+                         (shipments_df["pickup_date"] < cutoff_90d)]
+    
+    # Get unique lanes per customer for each period
+    recent_lanes = recent.groupby("customer_code")["lane"].apply(set).reset_index()
+    recent_lanes.columns = ["customer_code", "recent_lanes"]
+    
+    prior_lanes = prior.groupby("customer_code")["lane"].apply(set).reset_index()
+    prior_lanes.columns = ["customer_code", "prior_lanes"]
+    
+    # Merge
+    df = recent_lanes.merge(prior_lanes, on="customer_code", how="outer")
+    
+    # Fill missing sets with empty sets
+    df["recent_lanes"] = df["recent_lanes"].apply(lambda x: x if isinstance(x, set) else set())
+    df["prior_lanes"] = df["prior_lanes"].apply(lambda x: x if isinstance(x, set) else set())
+    
+    # Calculate abandoned lanes (in prior but not in recent)
+    df["abandoned_lanes"] = df.apply(
+        lambda row: row["prior_lanes"] - row["recent_lanes"], axis=1
+    )
+    df["lanes_abandoned_90d"] = df["abandoned_lanes"].apply(len)
+    
+    # Calculate new lanes (in recent but not in prior)
+    df["new_lanes_set"] = df.apply(
+        lambda row: row["recent_lanes"] - row["prior_lanes"], axis=1
+    )
+    df["new_lanes_90d"] = df["new_lanes_set"].apply(len)
+    
+    # Calculate percentages
+    df["total_historical_lanes"] = df["prior_lanes"].apply(len)
+    df["lanes_abandoned_pct"] = df["lanes_abandoned_90d"] / df["total_historical_lanes"].replace(0, 1)
+    
+    # Lane churn rate (negative = losing lanes, positive = gaining lanes)
+    df["lane_churn_rate"] = (df["new_lanes_90d"] - df["lanes_abandoned_90d"]) / df["total_historical_lanes"].replace(0, 1)
+    
+    # Select output columns
+    result = df[["customer_code", "lanes_abandoned_90d", "lanes_abandoned_pct", 
+                 "new_lanes_90d", "lane_churn_rate"]].copy()
+    result = result.fillna(0)
+    
+    logger.info(f"Created lane abandonment features for {len(result)} customers")
+    return result
 
 
 def create_door_pressure_features(
