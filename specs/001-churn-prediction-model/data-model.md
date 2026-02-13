@@ -42,6 +42,8 @@ This data model supports churn prediction for LTL (Less-than-Truckload) freight 
 | shipments | FRP001 | alpha_pro, agreement_number |
 | transit_review | TransitReview_V03 | PRO, agreement_number |
 | pickups | FMP030 (Pickup Header) | PU_REQUEST_NUMBER, shipper_number |
+| door_pressure | PlanDoorPressure | service_center, lp_date |
+| door_parking_count | Reference | service_center |
 | customers | TOP006 | customer_code |
 | customer_revenue | TOP006 | customer_code, period |
 | claims | Claims Data | claim_id, pro |
@@ -318,7 +320,56 @@ IS_INTL = FROM_CARRIER <> '' OR TO_CARRIER <> ''
 
 ---
 
-### 9. claims
+### 9. door_pressure
+
+**Source**: PlanDoorPressure view  
+**Grain**: One row per service center per flow type per date  
+**Purpose**: Service center dock door utilization - capacity pressure metrics
+
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| pressure_id | STRING | Unique ID (UUID) | System |
+| service_center | STRING | Service center code | PlanDoorPressure.RT |
+| flow_type | STRING | O/B (Outbound), I/B (Inbound), THROUGH | PlanDoorPressure.TYPE |
+| flow_type_order | INTEGER | Sort order: 1=O/B, 2=I/B, 3=THROUGH | PlanDoorPressure.TYPE_ORDER |
+| lp_date | DATE | Load plan date | PlanDoorPressure.LP_DATE |
+| ships | DECIMAL(10,2) | Shipment count (adjusted for through) | PlanDoorPressure.SHIPS |
+| refresh_date | TIMESTAMP | Data refresh timestamp | PlanDoorPressure.REFRESH_DATE |
+
+**Primary Key**: pressure_id  
+**Business Key**: (service_center, flow_type, lp_date)
+
+**Pressure Calculation**:
+```
+Door Pressure = Ships / (MaxDoorCount × WorkingDays)
+
+Where:
+- Ships: Sum from door_pressure table
+- MaxDoorCount: From door_parking_count reference
+- WorkingDays: Count of working days in period
+```
+
+Higher pressure indicates a more congested terminal, potentially correlating with service issues.
+
+---
+
+### 10. door_parking_count
+
+**Source**: Reference/Configuration  
+**Grain**: One row per service center  
+**Purpose**: Service center dock door capacity reference
+
+| Column | Type | Description | Source |
+|--------|------|-------------|--------|
+| service_center | STRING | Service center code (PK) | Reference |
+| door_count | INTEGER | Number of dock doors at terminal | Configuration |
+| effective_date | DATE | Effective date for door count | Configuration |
+
+**Primary Key**: service_center
+
+---
+
+### 11. claims
 
 **Source**: Claims Data table  
 **Grain**: One row per claim  
@@ -411,6 +462,11 @@ IS_INTL = FROM_CARRIER <> '' OR TO_CARRIER <> ''
 | distinct_service_centers | INTEGER | Number of service centers used |
 | primary_service_center | STRING | Most frequent service center |
 | service_center_issue_rate | DECIMAL(6,4) | % issues at primary center |
+| **Door Pressure Features** | | |
+| primary_sc_avg_pressure | DECIMAL(6,4) | Average door pressure at primary SC (90d) |
+| primary_sc_max_pressure | DECIMAL(6,4) | Peak door pressure at primary SC (90d) |
+| high_pressure_shipment_pct | DECIMAL(6,4) | % of shipments during high-pressure days |
+| weighted_pressure_exposure | DECIMAL(6,4) | Ship-weighted average pressure exposure |
 | **Shipper/Consignee Features** | | |
 | distinct_shippers | INTEGER | Number of unique shippers |
 | distinct_consignees | INTEGER | Number of unique consignees |
@@ -421,7 +477,7 @@ IS_INTL = FROM_CARRIER <> '' OR TO_CARRIER <> ''
 
 ---
 
-### 10. predictions
+### 14. predictions
 
 **Grain**: One row per customer per churn bucket per prediction date  
 **Purpose**: Model prediction outputs

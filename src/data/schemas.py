@@ -235,6 +235,11 @@ FEATURES_SCHEMA = TableSchema(
         ColumnDef("distinct_service_centers", "INT", True, "Number of service centers used"),
         ColumnDef("primary_service_center", "STRING", True, "Most frequent service center"),
         ColumnDef("service_center_issue_rate", "DECIMAL(6,4)", True, "% issues at primary center"),
+        # Door Pressure Features
+        ColumnDef("primary_sc_avg_pressure", "DECIMAL(6,4)", True, "Average door pressure at primary SC (90d)"),
+        ColumnDef("primary_sc_max_pressure", "DECIMAL(6,4)", True, "Peak door pressure at primary SC (90d)"),
+        ColumnDef("high_pressure_shipment_pct", "DECIMAL(6,4)", True, "% of shipments during high-pressure days"),
+        ColumnDef("weighted_pressure_exposure", "DECIMAL(6,4)", True, "Ship-weighted average pressure exposure"),
         # Shipper/Consignee Features
         ColumnDef("distinct_shippers", "INT", True, "Number of unique shippers"),
         ColumnDef("distinct_consignees", "INT", True, "Number of unique consignees"),
@@ -468,6 +473,36 @@ PICKUPS_SCHEMA = TableSchema(
     ]
 )
 
+DOOR_PRESSURE_SCHEMA = TableSchema(
+    name="door_pressure",
+    description="Service center door pressure (load planning) - dock door utilization metrics",
+    source_system="PlanDoorPressure",
+    primary_key=["pressure_id"],
+    columns=[
+        ColumnDef("pressure_id", "STRING", False, "Unique record identifier (UUID)"),
+        ColumnDef("service_center", "STRING", False, "Service center code (RT)"),
+        ColumnDef("flow_type", "STRING", True, "O/B (Outbound), I/B (Inbound), THROUGH"),
+        ColumnDef("flow_type_order", "INT", True, "Sort order: 1=O/B, 2=I/B, 3=THROUGH"),
+        ColumnDef("lp_date", "DATE", True, "Load plan date"),
+        ColumnDef("ships", "DECIMAL(10,2)", True, "Shipment count (adjusted for through freight)"),
+        ColumnDef("refresh_date", "TIMESTAMP", True, "Data refresh timestamp"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
+DOOR_PARKING_COUNT_SCHEMA = TableSchema(
+    name="door_parking_count",
+    description="Service center door capacity reference table",
+    source_system="Reference",
+    primary_key=["service_center"],
+    columns=[
+        ColumnDef("service_center", "STRING", False, "Service center code"),
+        ColumnDef("door_count", "INT", False, "Number of dock doors at terminal"),
+        ColumnDef("effective_date", "DATE", True, "Effective date for door count"),
+        ColumnDef("created_at", "TIMESTAMP", False, "Record creation timestamp"),
+    ]
+)
+
 
 # =============================================================================
 # Schema Registry
@@ -482,6 +517,8 @@ ALL_SCHEMAS: Dict[str, TableSchema] = {
     "operations_events": OPERATIONS_EVENTS_SCHEMA,
     "transit_review": TRANSIT_REVIEW_SCHEMA,
     "pickups": PICKUPS_SCHEMA,
+    "door_pressure": DOOR_PRESSURE_SCHEMA,
+    "door_parking_count": DOOR_PARKING_COUNT_SCHEMA,
     "claims": CLAIMS_SCHEMA,
     "customer_revenue": CUSTOMER_REVENUE_SCHEMA,
     "features": FEATURES_SCHEMA,
@@ -685,6 +722,16 @@ PICKUP_CANCEL_CODES = {
     "O": "Other",           # Review case-by-case
 }
 
+# Door Pressure column mapping
+DOOR_PRESSURE_COLUMN_MAP = {
+    "service_center": "RT",
+    "flow_type": "TYPE",
+    "flow_type_order": "TYPE_ORDER",
+    "lp_date": "LP_DATE",
+    "ships": "SHIPS",
+    "refresh_date": "REFRESH_DATE",
+}
+
 
 def get_source_column_map(source_system: str) -> Dict[str, str]:
     """Get column mapping for a source system."""
@@ -694,6 +741,7 @@ def get_source_column_map(source_system: str) -> Dict[str, str]:
         "Claims Data": CLAIMS_COLUMN_MAP,
         "TransitReview_V03": TRANSIT_REVIEW_COLUMN_MAP,
         "FMP030": PICKUPS_COLUMN_MAP,
+        "PlanDoorPressure": DOOR_PRESSURE_COLUMN_MAP,
     }
     return maps.get(source_system, {})
 

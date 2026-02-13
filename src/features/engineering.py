@@ -731,12 +731,172 @@ def create_shipper_consignee_features(
     return df
 
 
+def create_door_pressure_features(
+    shipments_df: pd.DataFrame,
+    door_pressure_df: pd.DataFrame,
+    door_parking_df: pd.DataFrame,
+    customer_codes: Optional[List[str]] = None,
+    reference_date: Optional[datetime] = None
+) -> pd.DataFrame:
+    """
+    Create service center door pressure (capacity) features.
+    
+    Door Pressure formula:
+        Pressure = Ships / (MaxDoorCount × WorkingDays)
+    
+    Higher pressure indicates a more congested terminal, which may correlate
+    with service issues and customer churn.
+    
+    Features created:
+    - primary_sc_avg_pressure: Average door pressure at customer's primary SC (90d)
+    - primary_sc_max_pressure: Peak door pressure at primary SC (90d)
+    - high_pressure_shipment_pct: % of customer shipments during high-pressure days (>0.8)
+    - weighted_pressure_exposure: Ship-weighted average pressure exposure
+    
+    Args:
+        shipments_df: Shipment data with customer_code and service center
+        door_pressure_df: Door pressure data (ships per SC per date)
+        door_parking_df: Door count reference (max doors per SC)
+        customer_codes: List of customer codes
+        reference_date: Reference date for calculations
+        
+    Returns:
+        DataFrame with customer_code and door pressure features
+    """
+    if reference_date is None:
+        reference_date = datetime.now()
+    
+    cutoff_90d = reference_date - timedelta(days=90)
+    
+    # Validate inputs
+    if len(door_pressure_df) == 0 or len(door_parking_df) == 0:
+        logger.warning("No door pressure or parking data available")
+        return pd.DataFrame(columns=["customer_code"])
+    
+    # Prepare shipments
+    shipments_df = shipments_df.copy()
+    if "pickup_date" in shipments_df.columns:
+        shipments_df["pickup_date"] = pd.to_datetime(shipments_df["pickup_date"], errors="coerce")
+        shipments_df = shipments_df[shipments_df["pickup_date"] >= cutoff_90d]
+    
+    if customer_codes is not None and "customer_code" in shipments_df.columns:
+        shipments_df = shipments_df[shipments_df["customer_code"].isin(customer_codes)]
+    
+    if "customer_code" not in shipments_df.columns or len(shipments_df) == 0:
+        return pd.DataFrame(columns=["customer_code"])
+    
+    # Determine service center column
+    sc_col = "origin_service_center" if "origin_service_center" in shipments_df.columns else "ori_id"
+    if sc_col not in shipments_df.columns:
+        logger.warning("No service center column found for door pressure features")
+        return pd.DataFrame(columns=["customer_code"])
+    
+    # Prepare door pressure data
+    door_pressure_df = door_pressure_df.copy()
+    if "lp_date" in door_pressure_df.columns:
+        door_pressure_df["lp_date"] = pd.to_datetime(door_pressure_df["lp_date"], errors="coerce")
+        door_pressure_df = door_pressure_df[door_pressure_df["lp_date"] >= cutoff_90d]
+    
+    # Calculate daily pressure per service center
+    # Pressure = Ships / MaxDoorCount (per day)
+    pressure_col = "service_center" if "service_center" in door_pressure_df.columns else "rt"
+    if pressure_col not in door_pressure_df.columns:
+        logger.warning("No service center column in door pressure data")
+        return pd.DataFrame(columns=["customer_code"])
+    
+    # Aggregate ships per SC per day
+    daily_ships = door_pressure_df.groupby([pressure_col, "lp_date"])["ships"].sum().reset_index()
+    
+    # Join door count
+    door_col = "service_center" if "service_center" in door_parking_df.columns else "rt"
+    door_count_col = "door_count" if "door_count" in door_parking_df.columns else "Door Count"
+    
+    if door_col in door_parking_df.columns and door_count_col in door_parking_df.columns:
+        daily_ships = daily_ships.merge(
+            door_parking_df[[door_col, door_count_col]].rename(columns={door_col: pressure_col}),
+            on=pressure_col,
+            how="left"
+        )
+        daily_ships[door_count_col] = daily_ships[door_count_col].fillna(1)  # Avoid division by zero
+        daily_ships["daily_pressure"] = daily_ships["ships"] / daily_ships[door_count_col]
+    else:
+        # If no door count, use ships as proxy
+        daily_ships["daily_pressure"] = daily_ships["ships"]
+    
+    # Average and max pressure by service center (90d)
+    sc_pressure = daily_ships.groupby(pressure_col).agg(
+        avg_pressure=("daily_pressure", "mean"),
+        max_pressure=("daily_pressure", "max")
+    ).reset_index()
+    
+    # Get each customer's primary service center
+    primary_sc = shipments_df.groupby("customer_code")[sc_col].agg(
+        lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else None
+    ).reset_index()
+    primary_sc.columns = ["customer_code", "primary_sc"]
+    
+    # Join pressure to customer via primary SC
+    primary_sc = primary_sc.merge(
+        sc_pressure.rename(columns={pressure_col: "primary_sc"}),
+        on="primary_sc",
+        how="left"
+    )
+    
+    df = primary_sc[["customer_code"]].copy()
+    df["primary_sc_avg_pressure"] = primary_sc["avg_pressure"].fillna(0)
+    df["primary_sc_max_pressure"] = primary_sc["max_pressure"].fillna(0)
+    
+    # Calculate high pressure exposure per customer
+    # Join shipments to daily pressure
+    shipments_with_pressure = shipments_df.merge(
+        daily_ships[[pressure_col, "lp_date", "daily_pressure"]].rename(
+            columns={pressure_col: sc_col, "lp_date": "pickup_date"}
+        ),
+        on=[sc_col, "pickup_date"],
+        how="left"
+    )
+    shipments_with_pressure["daily_pressure"] = shipments_with_pressure["daily_pressure"].fillna(0)
+    
+    # High pressure threshold (e.g., pressure > 0.8 of max observed)
+    high_pressure_threshold = daily_ships["daily_pressure"].quantile(0.8) if len(daily_ships) > 0 else 0
+    shipments_with_pressure["is_high_pressure"] = shipments_with_pressure["daily_pressure"] > high_pressure_threshold
+    
+    # Aggregate by customer
+    customer_pressure = shipments_with_pressure.groupby("customer_code").agg(
+        total_shipments=("daily_pressure", "count"),
+        high_pressure_shipments=("is_high_pressure", "sum"),
+        weighted_pressure=("daily_pressure", "mean")
+    ).reset_index()
+    
+    customer_pressure["high_pressure_shipment_pct"] = (
+        customer_pressure["high_pressure_shipments"] / 
+        customer_pressure["total_shipments"].replace(0, 1)
+    )
+    
+    # Merge all features
+    df = df.merge(
+        customer_pressure[["customer_code", "high_pressure_shipment_pct", "weighted_pressure"]].rename(
+            columns={"weighted_pressure": "weighted_pressure_exposure"}
+        ),
+        on="customer_code",
+        how="left"
+    )
+    
+    # Fill NaN
+    df = df.fillna(0)
+    
+    logger.info(f"Created door pressure features for {len(df)} customers")
+    return df
+
+
 def create_all_features(
     customers_df: pd.DataFrame,
     shipments_df: pd.DataFrame,
     transit_df: pd.DataFrame,
     pickups_df: pd.DataFrame,
     claims_df: pd.DataFrame,
+    door_pressure_df: Optional[pd.DataFrame] = None,
+    door_parking_df: Optional[pd.DataFrame] = None,
     reference_date: Optional[datetime] = None
 ) -> pd.DataFrame:
     """
@@ -749,6 +909,7 @@ def create_all_features(
     - Pickup performance (missed, cancelled, not ready)
     - Claims (count, rate, amounts)
     - Service center usage
+    - Service center pressure (door utilization)
     - Shipper/consignee lane concentration
     
     Args:
@@ -757,6 +918,8 @@ def create_all_features(
         transit_df: Transit performance from TransitReview_V03
         pickups_df: Pickup data from FMP030
         claims_df: Claims data
+        door_pressure_df: Door pressure data (optional)
+        door_parking_df: Door parking count reference (optional)
         reference_date: Reference date for calculations
         
     Returns:
@@ -801,7 +964,17 @@ def create_all_features(
     sc_features = create_service_center_features(shipments_df, transit_df, customer_codes, reference_date)
     features = features.merge(sc_features, on="customer_code", how="left")
     
-    # 7. Shipper/consignee features
+    # 7. Door pressure features (if data available)
+    if door_pressure_df is not None and door_parking_df is not None:
+        logger.info("Creating door pressure features...")
+        pressure_features = create_door_pressure_features(
+            shipments_df, door_pressure_df, door_parking_df, customer_codes, reference_date
+        )
+        features = features.merge(pressure_features, on="customer_code", how="left")
+    else:
+        logger.info("Skipping door pressure features (no data provided)")
+    
+    # 8. Shipper/consignee features
     logger.info("Creating shipper/consignee features...")
     lane_features = create_shipper_consignee_features(shipments_df, customer_codes, reference_date)
     features = features.merge(lane_features, on="customer_code", how="left")
